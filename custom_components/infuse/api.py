@@ -13,8 +13,18 @@ from .model import Playback, parse_now_playing
 
 class InfuseClient:
     def __init__(self, session: aiohttp.ClientSession, host: str, port: int) -> None:
-        self._url = URL.build(scheme="http", host=host, port=port, path="/nowplaying")
         self._session = session
+        self.update_endpoint(host, port)
+
+    @property
+    def endpoint(self) -> tuple[str, int]:
+        """The currently selected local Infuse HTTP endpoint."""
+        return self._host, self._port
+
+    def update_endpoint(self, host: str, port: int) -> None:
+        """Rebind to the latest Bonjour host/port without recreating the session."""
+        self._host, self._port = host, port
+        self._url = URL.build(scheme="http", host=host, port=port, path="/nowplaying")
 
     async def get_now_playing(self) -> Playback:
         start = monotonic()

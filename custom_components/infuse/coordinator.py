@@ -14,8 +14,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import InfuseClient
+from .discovery import async_resolve_endpoint
 from .const import (
-    CONF_LANGUAGE, CONF_TMDB_TOKEN, DEFAULT_LANGUAGE, DOMAIN,
+    CONF_DISCOVERY_NAME, CONF_LANGUAGE, CONF_TMDB_TOKEN, DEFAULT_LANGUAGE, DOMAIN,
     EVENT_MEDIA_CHANGED, EVENT_PLAYBACK_IDLE, EVENT_PLAYBACK_PAUSED,
     EVENT_PLAYBACK_RESUMED, EVENT_PLAYBACK_STARTED, EVENT_STATE_CHANGED,
 )
@@ -43,13 +44,38 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         self.client = client
         self.session = session
         self._artwork_cache: dict[tuple[str, str, str], tuple[float, str | None]] = {}
+        self._last_rediscovery = float("-inf")
 
     async def _async_update_data(self) -> Playback:
         previous = self.data
         try:
             current = await self.client.get_now_playing()
-        except (aiohttp.ClientError, TimeoutError, ValueError, InfuseInvalidResponse) as exc:
-            raise UpdateFailed(f"Unable to contact Infuse Now Playing API: {type(exc).__name__}") from exc
+        except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse) as exc:
+            service = self.entry.data.get(CONF_DISCOVERY_NAME)
+            # Do not launch a new mDNS resolver every five seconds while the
+            # Apple TV has suspended Infuse in the background.
+            if service and monotonic() - self._last_rediscovery >= 30:
+                self._last_rediscovery = monotonic()
+                endpoint = await async_resolve_endpoint(
+                    self.hass, service, self.client.endpoint[0], fresh=True,
+                )
+                if endpoint and endpoint != self.client.endpoint:
+                    self.client.update_endpoint(*endpoint)
+                    _LOGGER.info("Infuse endpoint changed to %s:%s", *endpoint)
+                    try:
+                        current = await self.client.get_now_playing()
+                    except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse) as retry_exc:
+                        raise UpdateFailed(
+                            f"Unable to contact Infuse Now Playing API: {type(retry_exc).__name__}"
+                        ) from retry_exc
+                else:
+                    raise UpdateFailed(
+                        f"Unable to contact Infuse Now Playing API: {type(exc).__name__}"
+                    ) from exc
+            else:
+                raise UpdateFailed(
+                    f"Unable to contact Infuse Now Playing API: {type(exc).__name__}"
+                ) from exc
 
         item = current.item
         token: str = self.entry.options.get(CONF_TMDB_TOKEN, "")

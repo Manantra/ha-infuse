@@ -13,6 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import InfuseClient
+from .discovery import async_resolve_endpoint
 from .const import (
     CONF_CLEAR_TMDB_TOKEN, CONF_DISCOVERY_NAME, CONF_HOST, CONF_LANGUAGE,
     CONF_NAME, CONF_POLL_INTERVAL, CONF_PORT, CONF_TMDB_TOKEN,
@@ -101,8 +102,15 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not self._discovered:
             return self.async_abort(reason="not_supported")
         errors: dict[str, str] = {}
+        info = self._discovered
+        # A discovery dialog may have been open for hours. Re-resolve the
+        # SRV record, which changes when Infuse restarts its HTTP server.
+        endpoint = await async_resolve_endpoint(
+            self.hass, info[CONF_DISCOVERY_NAME], info[CONF_HOST], fresh=True,
+        )
+        if endpoint is not None:
+            info[CONF_HOST], info[CONF_PORT] = endpoint
         if user_input is not None:
-            info = self._discovered
             error = await self._test_connection(info[CONF_HOST], info[CONF_PORT])
             if error:
                 errors["base"] = error

@@ -47,3 +47,28 @@ async def test_invalid_payload_is_rejected():
                 await api.InfuseClient(session, "127.0.0.1", port).get_now_playing()
     finally:
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_rebind_http_client_after_bonjour_port_change():
+    """A closed old listener must not prevent using the new Infuse HTTP port."""
+    async def now_playing(_request):
+        return web.json_response({"state": "idle"})
+
+    app = web.Application()
+    app.router.add_get("/nowplaying", now_playing)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        async with aiohttp.ClientSession() as session:
+            client = api.InfuseClient(session, "127.0.0.1", 59078)
+            assert client.endpoint == ("127.0.0.1", 59078)
+            client.update_endpoint("127.0.0.1", port)
+            assert client.endpoint == ("127.0.0.1", port)
+            result = await client.get_now_playing()
+            assert result.state == "idle"
+    finally:
+        await runner.cleanup()
