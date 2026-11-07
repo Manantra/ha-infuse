@@ -98,6 +98,12 @@ An existing TMDB API Read Access Token is stored in Home Assistant's **config en
 
 For additional verification, download the integration diagnostics: `tmdb_configured: true` means a non-empty token is stored. The diagnostic file intentionally never includes the token itself. If `tmdb_configured: false`, you can re-enter your TMDB API Read Access Token via **Configure**; the integration cannot retrieve a token that has actually been deleted from the Home Assistant config entry.
 
+## HAOS virtual machines and stale Bonjour cache (v0.2.7)
+
+In some Home Assistant OS virtual-machine networks, Home Assistant continues reporting an **old Infuse API port** even after the Apple TV has restarted its local HTTP listener. A fresh multicast query may also fail because mDNS delivery through the VM bridge is inconsistent. Version 0.2.7 adds one more targeted fallback: when HTTP polling and the shared/fresh Bonjour resolvers cannot find a reachable updated port, the integration sends a single **unicast DNS-SD SRV query directly to the already configured Apple TV on UDP 5353**. This requests its current `_infuse-np._tcp.local.` port and verifies the returned port by successfully reading the HTTP `/nowplaying` endpoint before accepting it. No subnet scan, arbitrary HTTP port scan or other-device discovery occurs. Queries remain throttled and only run when existing HTTP polling fails.
+
+Bonjour service-change events are also validated with an HTTP read before switching ports, so stale cached events cannot replace a working endpoint. The integration diagnostic `last_bonjour_resolution` value `direct_unicast` indicates the new recovery route was used. If a router, firewall or virtualization layer blocks direct unicast UDP 5353, the integration falls back to its existing discovery behavior and remains unavailable until Infuse can actually be reached.
+
 ## Security and privacy
 
 The local API uses unencrypted, unauthenticated HTTP. Never expose the endpoint to the internet. Core playback monitoring stays local; TMDB queries are optional. Home Assistant event and history records may contain playback details, so configure retention appropriately.

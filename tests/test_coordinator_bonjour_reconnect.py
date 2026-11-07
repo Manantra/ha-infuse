@@ -59,6 +59,11 @@ def coordinator_module(monkeypatch):
     fullname = f"{PACKAGE_NAME}.coordinator"
     sys.modules.pop(fullname, None)
     module = importlib.import_module(fullname)
+
+    async def no_unicast(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(module, "async_resolve_unicast", no_unicast)
     yield module, zeroconf
     sys.modules.pop(fullname, None)
 
@@ -167,6 +172,15 @@ async def test_bonjour_event_proactively_changes_port_and_refreshes_entity(coord
     monkeypatch.setattr(ha_zeroconf, "async_get_async_instance", get_ha_instance, raising=False)
     monkeypatch.setattr(module, "AsyncServiceBrowser", Browser)
     monkeypatch.setattr(module, "async_resolve_endpoint", resolver)
+
+    class ValidationClient:
+        def __init__(self, session, host, port):
+            self.endpoint = host, port
+
+        async def get_now_playing(self):
+            return model.Playback("idle", None, None, None)
+
+    monkeypatch.setattr(module, "InfuseClient", ValidationClient)
     coordinator = make_coordinator(module)
     refreshes = []
 
@@ -210,3 +224,64 @@ def test_setup_loads_entities_even_while_infuse_http_is_offline():
     assert "async_config_entry_first_refresh" not in methods
     assert "async_start_bonjour_updates" in methods
     assert "async_forward_entry_setups" in methods
+
+
+@pytest.mark.asyncio
+async def test_recover_via_unicast_if_ha_cache_and_fresh_multicast_stay_old(coordinator_module, monkeypatch):
+    """Regression for HAOS VM with stale port 59083 and working port 59085."""
+    module, _ = coordinator_module
+    mdns_queries = []
+    directed_queries = []
+
+    async def stale_multicast(_hass, _service, _host, *, fresh):
+        mdns_queries.append(fresh)
+        return OLD
+
+    async def direct_apple_tv(service, host):
+        directed_queries.append((service, host))
+        return NEW
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", stale_multicast)
+    monkeypatch.setattr(module, "async_resolve_unicast", direct_apple_tv)
+    coordinator = make_coordinator(module)
+    snapshot = await coordinator._async_update_data()
+    assert snapshot.state == "idle"
+    assert coordinator.client.calls == [OLD, NEW]
+    assert coordinator.client.endpoint == NEW
+    assert coordinator.endpoint_changes == 1
+    assert coordinator.last_resolution == "direct_unicast"
+    assert mdns_queries == [False, True]
+    assert directed_queries == [(SERVICE, HOST)]
+    assert (await coordinator._async_update_data()).state == "idle"
+    assert len(directed_queries) == 1  # no extra UDP requests after recovery
+
+
+@pytest.mark.asyncio
+async def test_ignore_late_stale_bonjour_event_after_unicast_recovery(coordinator_module, monkeypatch):
+    """Old HA mDNS data cannot replace the working unicast-recovered port."""
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    coordinator.client.endpoint = NEW
+    refreshes = []
+
+    async def old_cache(_hass, _service, _host, *, fresh):
+        return OLD
+
+    class ValidationClient:
+        def __init__(self, session, host, port):
+            self.endpoint = host, port
+
+        async def get_now_playing(self):
+            raise ConnectionRefusedError("old port is not answering")
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", old_cache)
+    monkeypatch.setattr(module, "InfuseClient", ValidationClient)
+
+    async def refresh():
+        refreshes.append(True)
+
+    coordinator.async_request_refresh = refresh
+    await coordinator._async_apply_bonjour_update()
+    assert coordinator.client.endpoint == NEW
+    assert coordinator.endpoint_changes == 0
+    assert refreshes == []

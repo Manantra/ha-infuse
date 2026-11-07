@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import InfuseClient
 from .discovery import SERVICE_TYPE, async_resolve_endpoint
+from .unicast_discovery import async_resolve_unicast
 from .const import (
     CONF_DISCOVERY_NAME, CONF_LANGUAGE, CONF_TMDB_TOKEN, DEFAULT_LANGUAGE, DOMAIN,
     EVENT_MEDIA_CHANGED, EVENT_PLAYBACK_IDLE, EVENT_PLAYBACK_PAUSED,
@@ -94,7 +95,17 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
             self.client.endpoint[0],
             fresh=False,
         )
-        if endpoint and self._update_endpoint(endpoint) and not self._unloading:
+        if endpoint is None or endpoint == self.client.endpoint or self._unloading:
+            return
+        # The HA mDNS cache can deliver a late, stale SRV event even after
+        # unicast recovery. Validate the candidate before replacing a working
+        # endpoint; never let an outdated cache event break reconnection.
+        try:
+            await InfuseClient(self.session, *endpoint).get_now_playing()
+        except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
+            _LOGGER.debug("Ignoring unreachable Infuse Bonjour update on port %s", endpoint[1])
+            return
+        if self._update_endpoint(endpoint) and not self._unloading:
             self.last_resolution = "bonjour_event"
             await self.async_request_refresh()
 
@@ -133,6 +144,17 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
                 return await self.client.get_now_playing()
             except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
                 continue
+        # Some HAOS VMs receive no fresh multicast announcements after tvOS
+        # restarts Infuse. Ask the *already paired* Apple TV directly for its
+        # SRV record as a last resort. No port sweep or subnet discovery.
+        endpoint = await async_resolve_unicast(service, self.client.endpoint[0])
+        if endpoint and endpoint not in tried:
+            self._update_endpoint(endpoint)
+            self.last_resolution = "direct_unicast"
+            try:
+                return await self.client.get_now_playing()
+            except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
+                pass
         self.last_resolution = "no_reachable_new_endpoint"
         raise UpdateFailed(
             f"Unable to contact Infuse Now Playing API: {type(original_error).__name__}"
