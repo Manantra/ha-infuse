@@ -1,0 +1,40 @@
+name: Bug report
+description: Report an unexpected Infuse Now Playing integration behavior.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include API tokens, private media URLs or public IP addresses.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version
+    validations:
+      required: true
+  - type: input
+    id: infuse
+    attributes:
+      label: Infuse version and device
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Remove usernames, addresses, stream URLs and credentials.
+      render: text
