@@ -1,0 +1,33 @@
+name: Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test requirements
+        run: python -m pip install -r requirements-test.txt
+      - name: Python tests
+        run: python -m pytest -q
+      - name: Validate Python and JSON
+        run: |
+          python -m compileall -q custom_components tests
+          python -c "import json, pathlib; [json.loads(f.read_text()) for f in pathlib.Path('custom_components/infuse').rglob('*.json')]"
+      - name: Validate dashboard JavaScript
+        run: |
+          node --check examples/www/infuse-now-playing-card.js
+          node --check examples/www/infuse-household-card.js
