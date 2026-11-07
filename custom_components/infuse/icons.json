@@ -1,0 +1,6 @@
+{
+  "services": {
+    "create_library_link": "mdi:link-variant",
+    "create_stream_link": "mdi:video-plus"
+  }
+}
