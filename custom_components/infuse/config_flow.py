@@ -163,8 +163,12 @@ class InfuseOptionsFlow(config_entries.OptionsFlow):
             options[CONF_LANGUAGE] = user_input[CONF_LANGUAGE]
             if user_input.get(CONF_CLEAR_TMDB_TOKEN):
                 options.pop(CONF_TMDB_TOKEN, None)
-            elif user_input.get(CONF_TMDB_TOKEN):
-                options[CONF_TMDB_TOKEN] = user_input[CONF_TMDB_TOKEN].strip()
+            else:
+                # Password fields are deliberately empty on reopen. A blank
+                # or whitespace-only value must never remove a saved token.
+                supplied_token = (user_input.get(CONF_TMDB_TOKEN) or "").strip()
+                if supplied_token:
+                    options[CONF_TMDB_TOKEN] = supplied_token
             return self.async_create_entry(title="", data=options)
         options = self.config_entry.options
         schema = vol.Schema({
@@ -177,4 +181,10 @@ class InfuseOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(CONF_CLEAR_TMDB_TOKEN, default=False): cv.boolean,
         })
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={
+                "tmdb_status": "✓" if bool(options.get(CONF_TMDB_TOKEN)) else "✗",
+            },
+        )

@@ -35,7 +35,7 @@
     "step": {
       "init": {
         "title": "Infuse settings",
-        "description": "If no TMDB token is configured and you want posters, enter your API Read Access Token. Leaving the token blank keeps an existing one. Playback metadata remains local without a token. [Get a TMDB token](https://www.themoviedb.org/settings/api).",
+        "description": "TMDB token saved: **{tmdb_status}** (✓ = saved, ✗ = not saved). The token field stays blank for security, even when one is stored. Leave it blank to **keep** the existing token. To change it, paste a new API Read Access Token; to delete it, select “Remove stored TMDB token”. Posters are optional. [Get a TMDB token](https://www.themoviedb.org/settings/api).",
         "data": {
           "poll_interval": "Poll interval (seconds)",
           "language": "Poster metadata language",

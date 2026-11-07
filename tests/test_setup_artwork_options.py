@@ -61,7 +61,7 @@ def flow_module(monkeypatch):
             return value
 
     entries.ConfigFlow = ConfigFlow
-    entries.OptionsFlow = type("OptionsFlow", (), {})
+    entries.OptionsFlow = ConfigFlow
     entries.ConfigEntry = object
     core.callback = lambda func: func
     data_entry_flow.FlowResult = dict
@@ -168,3 +168,55 @@ async def test_bonjour_confirmation_no_token_retains_local_only_flow(flow_module
     entry = await flow.async_step_confirm({})
     assert entry["type"] == "create_entry"
     assert entry["options"] == {}
+
+@pytest.mark.asyncio
+async def test_options_screen_identifies_stored_token_without_revealing_value(flow_module):
+    options_flow = flow_module.InfuseOptionsFlow()
+    options_flow.config_entry = SimpleNamespace(options={"tmdb_token": "top-secret-token"})
+    form = await options_flow.async_step_init()
+    assert form["description_placeholders"]["tmdb_status"] == "✓"
+    assert "top-secret-token" not in repr(form)
+    assert "tmdb_token" not in form["data_schema"]({"poll_interval": 5, "language": "de-DE"})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("token_value", [None, "", "   "])
+async def test_options_preserve_existing_token_when_password_field_blank(flow_module, token_value):
+    options_flow = flow_module.InfuseOptionsFlow()
+    options_flow.config_entry = SimpleNamespace(options={"tmdb_token": "existing-token", "language": "de-DE"})
+    submission = {"poll_interval": 10, "language": "en-US", "clear_tmdb_token": False}
+    if token_value is not None:
+        submission["tmdb_token"] = token_value
+    result = await options_flow.async_step_init(submission)
+    assert result["data"]["tmdb_token"] == "existing-token"
+    assert result["data"]["poll_interval"] == 10
+    assert result["data"]["language"] == "en-US"
+
+
+@pytest.mark.asyncio
+async def test_options_replace_token_only_when_explicit_nonempty_value(flow_module):
+    options_flow = flow_module.InfuseOptionsFlow()
+    options_flow.config_entry = SimpleNamespace(options={"tmdb_token": "old-token"})
+    result = await options_flow.async_step_init({
+        "poll_interval": 5, "language": "de-DE", "tmdb_token": "  new-token  "
+    })
+    assert result["data"]["tmdb_token"] == "new-token"
+
+
+@pytest.mark.asyncio
+async def test_options_remove_token_only_with_explicit_clear_flag(flow_module):
+    options_flow = flow_module.InfuseOptionsFlow()
+    options_flow.config_entry = SimpleNamespace(options={"tmdb_token": "existing-token"})
+    result = await options_flow.async_step_init({
+        "poll_interval": 5, "language": "de-DE", "clear_tmdb_token": True,
+        "tmdb_token": "unwanted-new-token",
+    })
+    assert "tmdb_token" not in result["data"]
+
+
+@pytest.mark.asyncio
+async def test_options_screen_indicates_when_no_token_exists(flow_module):
+    options_flow = flow_module.InfuseOptionsFlow()
+    options_flow.config_entry = SimpleNamespace(options={})
+    form = await options_flow.async_step_init()
+    assert form["description_placeholders"]["tmdb_status"] == "✗"

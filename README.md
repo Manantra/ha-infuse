@@ -92,6 +92,12 @@ From version **0.2.5**, the integration listens to Infuse service changes throug
 
 You can inspect **Settings → Devices & services → Infuse Now Playing → Download diagnostics** to see the original setup port, active port, port-switch count, and last resolution path. Addresses and TMDB credentials remain redacted. If the HTTP service remains unreachable even on the most recent Bonjour port, completely quit and reopen Infuse on the Apple TV; Home Assistant cannot restart Infuse's local listener itself.
 
+## TMDB token persistence and the empty password field
+
+An existing TMDB API Read Access Token is stored in Home Assistant's **config entry options**, not in the integration's Python files. Upgrading this integration must not reset it. For security, the token input in **Configure** is always blank, even when a token has already been saved. Since v0.2.6, the options screen shows **✓ saved** or **✗ not saved** next to the TMDB token status, without exposing the credential. Saving the options with the token field blank or containing only spaces preserves the existing token; the explicit **Remove stored TMDB token** checkbox deletes it.
+
+For additional verification, download the integration diagnostics: `tmdb_configured: true` means a non-empty token is stored. The diagnostic file intentionally never includes the token itself. If `tmdb_configured: false`, you can re-enter your TMDB API Read Access Token via **Configure**; the integration cannot retrieve a token that has actually been deleted from the Home Assistant config entry.
+
 ## Security and privacy
 
 The local API uses unencrypted, unauthenticated HTTP. Never expose the endpoint to the internet. Core playback monitoring stays local; TMDB queries are optional. Home Assistant event and history records may contain playback details, so configure retention appropriately.

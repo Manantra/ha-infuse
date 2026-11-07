@@ -35,7 +35,7 @@
     "step": {
       "init": {
         "title": "Infuse-Einstellungen",
-        "description": "Falls noch kein TMDB-Token hinterlegt ist und du Cover möchtest, gib deinen API Read Access Token ein. Ein leeres Tokenfeld behält ein bereits gespeichertes Token bei. Ohne Token funktionieren Titel und Wiedergabe lokal. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
+        "description": "TMDB-Token gespeichert: **{tmdb_status}** (✓ = gespeichert, ✗ = nicht gespeichert). Das Tokenfeld bleibt aus Sicherheitsgründen **immer leer**, auch wenn ein Token hinterlegt ist. Ein leeres Feld **behält** den vorhandenen Token. Zum Ersetzen einen neuen API Read Access Token eingeben, zum Entfernen die Option „Gespeicherten TMDB-Token entfernen“ auswählen. Cover sind optional. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "language": "Sprache der Cover-Metadaten",
