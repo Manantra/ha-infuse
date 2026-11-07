@@ -1,0 +1,26 @@
+- id: infuse_living_room_started
+  alias: Infuse - dim living room on playback
+  trigger:
+    - platform: event
+      event_type: infuse_playback_started
+      event_data:
+        device_name: Wohnzimmer
+  action:
+    - action: light.turn_on
+      target:
+        entity_id: light.wohnzimmer
+      data:
+        brightness_pct: 25
+- id: infuse_living_room_paused
+  alias: Infuse - lights on pause
+  trigger:
+    - platform: event
+      event_type: infuse_playback_paused
+      event_data:
+        device_name: Wohnzimmer
+  action:
+    - action: light.turn_on
+      target:
+        entity_id: light.wohnzimmer
+      data:
+        brightness_pct: 60
