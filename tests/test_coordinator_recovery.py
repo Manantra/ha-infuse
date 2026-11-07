@@ -16,6 +16,9 @@ async def test_coordinator_recovers_from_new_bonjour_port(monkeypatch):
     homeassistant.__path__ = []
     config_entries = ModuleType("homeassistant.config_entries")
     config_entries.ConfigEntry = object
+    components = ModuleType("homeassistant.components")
+    components.__path__ = []
+    ha_zeroconf = ModuleType("homeassistant.components.zeroconf")
     core = ModuleType("homeassistant.core")
     core.HomeAssistant = object
     helpers = ModuleType("homeassistant.helpers")
@@ -37,6 +40,8 @@ async def test_coordinator_recovers_from_new_bonjour_port(monkeypatch):
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
     for name, mod in (
         ("homeassistant", homeassistant),
+        ("homeassistant.components", components),
+        ("homeassistant.components.zeroconf", ha_zeroconf),
         ("homeassistant.config_entries", config_entries),
         ("homeassistant.core", core),
         ("homeassistant.helpers", helpers),
@@ -85,5 +90,7 @@ async def test_coordinator_recovers_from_new_bonjour_port(monkeypatch):
         ("192.168.178.133", 59078),
         ("192.168.178.133", 59083),
     ]
-    assert len(lookups) == 1 and lookups[0][2] is True
+    assert len(lookups) == 1 and lookups[0][2] is False
+    assert instance.endpoint_changes == 1
+    assert instance.last_resolution == "home_assistant"
     sys.modules.pop(module_name, None)

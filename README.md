@@ -84,6 +84,14 @@ If Home Assistant still shows an old port in an existing setup dialog, update th
 
 The integration includes the original orange play emblem extracted from [`assets/infuse-home-assistant.svg`](assets/infuse-home-assistant.svg) as a 256×256 icon and a 512×512 high-resolution icon in `custom_components/infuse/brand/`. Home Assistant 2026.3 and newer read locally bundled integration brand icons; the design is not a Firecore official icon. Some HACS versions may still show a generic placeholder inside the HACS catalog even when the icon works in **Settings → Devices & services**.
 
+## Recovery after Infuse is backgrounded or restarted
+
+On Apple TV, tvOS can suspend the Infuse HTTP service when the app is in the background. The mDNS advertisement may stay visible even if the service no longer answers HTTP requests. When the app is reopened, Infuse often allocates a new port; Home Assistant must follow that change without requiring you to delete the device, reload the integration or restart Home Assistant.
+
+From version **0.2.5**, the integration listens to Infuse service changes through **Home Assistant's shared Bonjour instance**, updates the player endpoint when a new SRV port is advertised and refreshes the entities. When HTTP polling fails, it first tries the shared Bonjour instance and then a fresh resolver if the shared record is stale, limiting repeated lookups while the app is suspended. It also loads an already configured device as **unavailable** at Home Assistant startup if Infuse is still offline; regular polling and Bonjour monitoring continue until the service comes back.
+
+You can inspect **Settings → Devices & services → Infuse Now Playing → Download diagnostics** to see the original setup port, active port, port-switch count, and last resolution path. Addresses and TMDB credentials remain redacted. If the HTTP service remains unreachable even on the most recent Bonjour port, completely quit and reopen Infuse on the Apple TV; Home Assistant cannot restart Infuse's local listener itself.
+
 ## Security and privacy
 
 The local API uses unencrypted, unauthenticated HTTP. Never expose the endpoint to the internet. Core playback monitoring stays local; TMDB queries are optional. Home Assistant event and history records may contain playback details, so configure retention appropriately.

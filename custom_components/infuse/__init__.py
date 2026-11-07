@@ -108,7 +108,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, entry, client, session,
         int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)),
     )
-    await coordinator.async_config_entry_first_refresh()
+    # Infuse can be suspended by tvOS while Home Assistant starts. Set up the
+    # entities even when its HTTP listener is unavailable: scheduled polling
+    # and the Bonjour watcher can then restore the device without a reload.
+    await coordinator.async_refresh()
+    await coordinator.async_start_bonjour_updates()
+    entry.async_on_unload(coordinator.async_stop_bonjour_updates)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_update_options))

@@ -12,10 +12,13 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
     coordinator = hass.data[DOMAIN][entry.entry_id]
     snapshot = coordinator.data
     return {
-        "integration_version": "0.2.0",
+        "integration_version": "0.2.5",
         "name": entry.title,
         "host": "[redacted]",
         "port": entry.data.get("port"),
+        "active_port": coordinator.client.endpoint[1],
+        "endpoint_changes": coordinator.endpoint_changes,
+        "last_bonjour_resolution": coordinator.last_resolution,
         "discovered": "discovery_name" in entry.data,
         "poll_interval": coordinator.update_interval.total_seconds(),
         "tmdb_configured": bool(entry.options.get("tmdb_token")),
