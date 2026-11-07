@@ -31,7 +31,7 @@
     "step": {
       "init": {
         "title": "Infuse settings",
-        "description": "TMDB artwork is optional. Leave the token blank to keep the current token.",
+        "description": "Series posters require a free TMDB API Read Access Token (TMDB account → Settings → API). Leave the token blank to keep your existing one. Without a token, the player displays titles and progress but no poster. TMDB requests are optional and sent only if you configure a token.",
         "data": {
           "poll_interval": "Poll interval (seconds)",
           "language": "Poster metadata language",

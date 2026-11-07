@@ -31,7 +31,7 @@
     "step": {
       "init": {
         "title": "Infuse-Einstellungen",
-        "description": "TMDB-Cover sind optional. Ein leeres Tokenfeld behält das gespeicherte Token bei.",
+        "description": "Für Seriencover benötigst du einen kostenlosen TMDB API Read Access Token (TMDB-Konto → Einstellungen → API). Ohne Token werden Titel und Fortschritt, aber kein Poster angezeigt. Ein leeres Feld behält ein bereits gespeichertes Token bei. Externe TMDB-Anfragen erfolgen nur, wenn du ein Token hinterlegst.",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "language": "Sprache der Cover-Metadaten",

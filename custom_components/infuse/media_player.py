@@ -81,7 +81,9 @@ class InfuseMediaPlayer(InfuseEntity, MediaPlayerEntity):
         item = self.coordinator.data.item if self.coordinator.data else None
         if not item:
             return None
-        return MediaType.MOVIE if item.kind == "movie" else MediaType.EPISODE
+        # HA's media-player UI shows series / season / episode details for
+        # "tvshow". "episode" is a valid type but has no secondary TV line.
+        return MediaType.MOVIE if item.kind == "movie" else MediaType.TVSHOW
 
     @property
     def media_duration(self) -> int | None:

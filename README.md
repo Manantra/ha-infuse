@@ -56,6 +56,18 @@ The custom dashboard cards are optional. Their JavaScript files are in `examples
 
 A shared iCloud or Infuse account does not merge devices or playback sessions. The API does not provide active profile information, so the integration never invents or infers user identities.
 
+## Episode titles and optional posters
+
+Home Assistant's media-player card displays the **episode title** as its main title and the **series name + season/episode number** underneath (for example, **Zurückgelassen** / **Reign S1E7**). The metadata remains available as `media_title`, `media_series_title`, `media_season`, and `media_episode` attributes.
+
+**Why is the cover missing?** The local Infuse Now Playing API provides media IDs but not cover images. Poster enrichment therefore uses the separate, optional [TMDB API](https://www.themoviedb.org/settings/api). To enable it:
+
+1. Create or sign in to a free TMDB account and obtain an **API Read Access Token** from account settings under **API**.
+2. Open **Home Assistant → Settings → Devices & services → Infuse Now Playing → Configure**.
+3. Paste the **API Read Access Token** into the TMDB token field, save, and play a film or episode. Home Assistant will refresh the integration and request a poster when TMDB has one.
+
+This is the **API Read Access Token**, not your TMDB password. No token is required to use playback status, series names or progress. Enabling artwork sends the TMDB media ID to TMDB; without a token, playback monitoring stays local. A movie poster or TV-series poster is shown when one is available. A missing TMDB ID, unavailable poster, invalid token or TMDB network error leaves the cover empty rather than breaking local playback.
+
 ## Bonjour port changes and Apple TV background behavior
 
 Infuse allocates its local Now Playing API port dynamically. When configuring a Bonjour-discovered device, the integration actively resolves the current service address instead of trusting the original discovery notification. Configured devices attempt re-discovery on connection failures (at most once every 30 seconds) and automatically reconnect when Infuse resumes on a new port.
