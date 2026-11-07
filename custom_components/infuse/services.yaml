@@ -1,0 +1,67 @@
+create_library_link:
+  name: Infuse library deep link
+  description: Create a link for a TMDB-linked title on an Infuse device. Does not remotely control playback.
+  fields:
+    media_type:
+      required: true
+      selector:
+        select:
+          options: [movie, series, season, episode]
+    tmdb_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 99999999
+          mode: box
+    season:
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    episode:
+      selector:
+        number:
+          min: 1
+          max: 10000
+          mode: box
+    autoplay:
+      selector:
+        boolean: {}
+create_stream_link:
+  name: Infuse stream URL
+  description: Generate a play or save URL to open on the Infuse device; not an HTTP remote-control command.
+  fields:
+    action:
+      required: true
+      selector:
+        select:
+          options: [play, save]
+    url:
+      selector:
+        text: {}
+    filename:
+      selector:
+        text: {}
+    subtitle:
+      selector:
+        text: {}
+    position:
+      selector:
+        number:
+          min: 0
+          max: 999999
+          mode: box
+    streams:
+      selector:
+        object: {}
+    download:
+      selector:
+        boolean: {}
+    x_success:
+      selector:
+        text: {}
+    x_error:
+      selector:
+        text: {}
