@@ -1,0 +1,20 @@
+template:
+  - sensor:
+      - name: Infuse playing sessions
+        unique_id: infuse_playing_sessions
+        icon: mdi:play-circle
+        state: >
+          {{ expand('media_player.infuse_wohnzimmer', 'media_player.infuse_schlafzimmer', 'media_player.infuse_ipad')
+             | selectattr('state', 'eq', 'playing') | list | count }}
+      - name: Infuse paused sessions
+        unique_id: infuse_paused_sessions
+        icon: mdi:pause-circle
+        state: >
+          {{ expand('media_player.infuse_wohnzimmer', 'media_player.infuse_schlafzimmer', 'media_player.infuse_ipad')
+             | selectattr('state', 'eq', 'paused') | list | count }}
+  - binary_sensor:
+      - name: Infuse playing anywhere
+        unique_id: infuse_playing_anywhere
+        state: >
+          {{ expand('media_player.infuse_wohnzimmer', 'media_player.infuse_schlafzimmer', 'media_player.infuse_ipad')
+             | selectattr('state', 'eq', 'playing') | list | count > 0 }}
