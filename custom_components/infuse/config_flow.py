@@ -22,6 +22,12 @@ from .const import (
 from .model import InfuseInvalidResponse
 
 
+def _initial_artwork_options(user_input: dict) -> dict[str, str]:
+    """Keep optional credentials out of connection data and empty config entries."""
+    token = (user_input.get(CONF_TMDB_TOKEN) or "").strip()
+    return {CONF_TMDB_TOKEN: token} if token else {}
+
+
 class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Set up only actual Firecore Now Playing endpoints."""
 
@@ -66,6 +72,7 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return self.async_create_entry(
                         title=user_input[CONF_NAME].strip() or "Infuse",
                         data={CONF_HOST: host, CONF_PORT: port},
+                        options=_initial_artwork_options(user_input),
                     )
         port_key = (
             vol.Required(CONF_PORT, default=user_input[CONF_PORT])
@@ -75,6 +82,9 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_HOST, default=(user_input or {}).get(CONF_HOST, "")): cv.string,
             port_key: vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Required(CONF_NAME, default=(user_input or {}).get(CONF_NAME, "Infuse")): cv.string,
+            vol.Optional(CONF_TMDB_TOKEN): TextSelector(
+                TextSelectorConfig(type=TextSelectorType.PASSWORD)
+            ),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
@@ -115,12 +125,20 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                return self.async_create_entry(title=info[CONF_NAME], data=info)
+                return self.async_create_entry(
+                    title=info[CONF_NAME],
+                    data=info,
+                    options=_initial_artwork_options(user_input),
+                )
         # Step titles and descriptions use description_placeholders; the discovery
         # flow's title_placeholders only apply to the flow title in the UI.
         return self.async_show_form(
             step_id="confirm",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({
+                vol.Optional(CONF_TMDB_TOKEN): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+            }),
             errors=errors,
             description_placeholders={
                 "name": self._discovered[CONF_NAME],

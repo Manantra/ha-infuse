@@ -56,6 +56,10 @@ The custom dashboard cards are optional. Their JavaScript files are in `examples
 
 A shared iCloud or Infuse account does not merge devices or playback sessions. The API does not provide active profile information, so the integration never invents or infers user identities.
 
+## Optional TMDB poster setup during device installation
+
+Both the automatic Bonjour confirmation and manual setup screen now include an **optional password-masked TMDB API Read Access Token** input. If you want movie and series covers, paste your own token from [TMDB account settings](https://www.themoviedb.org/settings/api) while adding the device. If you leave it blank, local playback status, titles and progress still work; posters can be enabled later under **Configure**. Each Infuse device keeps its own optional TMDB token in the Home Assistant entry options, separate from its local connection settings. No token is included in diagnostics.
+
 ## Episode titles and optional posters
 
 Home Assistant's media-player card displays the **episode title** as its main title and the **series name + season/episode number** underneath (for example, **Zurückgelassen** / **Reign S1E7**). The metadata remains available as `media_title`, `media_series_title`, `media_season`, and `media_episode` attributes.
@@ -75,6 +79,10 @@ Infuse allocates its local Now Playing API port dynamically. When configuring a 
 On Apple TV, the local HTTP endpoint may stop responding when Infuse is moved to the background. In that situation the media player becomes **unavailable** rather than incorrectly reporting **idle**. The Bonjour advertisement can remain visible even while the HTTP server is suspended. Reopening Infuse may not always restore the server; fully closing and reopening the app can bring it back with a different port. These behaviors were observed in a local Apple TV test and may vary by tvOS / Infuse version.
 
 If Home Assistant still shows an old port in an existing setup dialog, update the integration and restart Home Assistant before opening the discovery again. The confirmation screen will then re-resolve the service automatically.
+
+## Home Assistant branding
+
+The integration includes the original orange play emblem extracted from [`assets/infuse-home-assistant.svg`](assets/infuse-home-assistant.svg) as a 256×256 icon and a 512×512 high-resolution icon in `custom_components/infuse/brand/`. Home Assistant 2026.3 and newer read locally bundled integration brand icons; the design is not a Firecore official icon. Some HACS versions may still show a generic placeholder inside the HACS catalog even when the icon works in **Settings → Devices & services**.
 
 ## Security and privacy
 

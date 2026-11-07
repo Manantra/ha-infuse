@@ -4,16 +4,20 @@
     "step": {
       "user": {
         "title": "Mit Infuse verbinden",
-        "description": "Aktiviere in Infuse unter Einstellungen > Wiedergabe die Now Playing API. Automatische Erkennung wird empfohlen.",
+        "description": "Aktiviere die Now Playing API in Infuse unter Einstellungen > Wiedergabe. Für **Cover** kannst du unten optional einen **TMDB API Read Access Token** angeben. Ohne Token funktionieren alle lokalen Wiedergabeinformationen. Den Token kannst du auch später unter „Konfigurieren“ hinzufügen. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
         "data": {
           "host": "Hostname oder lokale IP-Adresse",
           "port": "Port der Now Playing API",
-          "name": "Gerätename"
+          "name": "Gerätename",
+          "tmdb_token": "TMDB API Read Access Token für Cover (optional)"
         }
       },
       "confirm": {
         "title": "{name} hinzufügen?",
-        "description": "Die lokal erkannte Infuse Now Playing API für {name} unter {host}:{port} verwenden."
+        "description": "Die lokal erkannte Infuse Now Playing API für {name} unter {host}:{port} verwenden. Für **Cover** kannst du optional einen **TMDB API Read Access Token** eintragen, sofern für dieses Gerät noch keiner hinterlegt ist. Ohne Token funktionieren Titel und Wiedergabestatus; den Token kannst du später hinzufügen. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
+        "data": {
+          "tmdb_token": "TMDB API Read Access Token für Cover (optional)"
+        }
       }
     },
     "error": {
@@ -31,7 +35,7 @@
     "step": {
       "init": {
         "title": "Infuse-Einstellungen",
-        "description": "Für Seriencover benötigst du einen kostenlosen TMDB API Read Access Token (TMDB-Konto → Einstellungen → API). Ohne Token werden Titel und Fortschritt, aber kein Poster angezeigt. Ein leeres Feld behält ein bereits gespeichertes Token bei. Externe TMDB-Anfragen erfolgen nur, wenn du ein Token hinterlegst.",
+        "description": "Falls noch kein TMDB-Token hinterlegt ist und du Cover möchtest, gib deinen API Read Access Token ein. Ein leeres Tokenfeld behält ein bereits gespeichertes Token bei. Ohne Token funktionieren Titel und Wiedergabe lokal. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "language": "Sprache der Cover-Metadaten",
