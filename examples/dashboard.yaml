@@ -1,0 +1,14 @@
+title: Infuse
+views:
+  - title: Now Playing
+    path: now-playing
+    icon: mdi:play-circle-outline
+    cards:
+      - type: custom:infuse-now-playing-card
+        entity: media_player.infuse_wohnzimmer
+      - type: entities
+        title: Playback details
+        entities:
+          - media_player.infuse_wohnzimmer
+          - sensor.infuse_wohnzimmer_progress
+          - sensor.infuse_wohnzimmer_time_remaining
