@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose an improvement consistent with Firecore's documented API.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Use case
+      description: What should the integration help you achieve?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: api
+    attributes:
+      label: API reference or compatibility notes
+      description: Remote control and profile identity are not currently exposed by the official Now Playing API.
