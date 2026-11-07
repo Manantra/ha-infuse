@@ -1,0 +1,18 @@
+title: Infuse Household
+views:
+  - title: Now Playing
+    path: household
+    icon: mdi:home-group
+    cards:
+      - type: custom:infuse-household-card
+        title: At home
+        entities:
+          - media_player.infuse_wohnzimmer
+          - media_player.infuse_schlafzimmer
+          - media_player.infuse_ipad
+      - type: entities
+        title: Players
+        entities:
+          - media_player.infuse_wohnzimmer
+          - media_player.infuse_schlafzimmer
+          - media_player.infuse_ipad
