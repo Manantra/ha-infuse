@@ -108,7 +108,18 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = error
             else:
                 return self.async_create_entry(title=info[CONF_NAME], data=info)
-        return self.async_show_form(step_id="confirm", data_schema=vol.Schema({}), errors=errors)
+        # Step titles and descriptions use description_placeholders; the discovery
+        # flow's title_placeholders only apply to the flow title in the UI.
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "name": self._discovered[CONF_NAME],
+                "host": self._discovered[CONF_HOST],
+                "port": str(self._discovered[CONF_PORT]),
+            },
+        )
 
     @staticmethod
     @callback

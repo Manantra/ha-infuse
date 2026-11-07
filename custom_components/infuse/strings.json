@@ -1,1 +1,62 @@
-{"title":"Infuse Now Playing","config":{"step":{"user":{"title":"Connect to Infuse","description":"Enable Now Playing API in Infuse > Settings > Playback. Automatic discovery is recommended.","data":{"host":"Host or local IP address","port":"Now Playing API port","name":"Device name"}},"confirm":{"title":"Add {name}?","description":"Use the discovered local Infuse Now Playing API."}},"error":{"cannot_connect":"Unable to contact Infuse. Check app, network, and port.","invalid_response":"Not a valid Infuse Now Playing endpoint.","invalid_host":"Enter a host or IP address, not a URL.","unknown":"Unexpected error. Check logs."},"abort":{"already_configured":"This device is already configured.","not_supported":"Device information is missing."}},"options":{"step":{"init":{"title":"Infuse settings","description":"TMDB artwork is optional. Leave the token blank to keep the current token.","data":{"poll_interval":"Poll interval (seconds)","language":"Poster metadata language","tmdb_token":"TMDB API Read Access Token (optional)","clear_tmdb_token":"Remove stored TMDB token"}}}},"entity":{"sensor":{"progress":{"name":"Progress"},"remaining":{"name":"Time remaining"},"latency":{"name":"API latency"}},"binary_sensor":{"playing":{"name":"Video playing"}}}}
+{
+  "title": "Infuse Now Playing",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Infuse",
+        "description": "Enable Now Playing API in Infuse > Settings > Playback. Automatic discovery is recommended.",
+        "data": {
+          "host": "Host or local IP address",
+          "port": "Now Playing API port",
+          "name": "Device name"
+        }
+      },
+      "confirm": {
+        "title": "Add {name}?",
+        "description": "Use the discovered local Infuse Now Playing API for {name} at {host}:{port}."
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to contact Infuse. Check app, network, and port.",
+      "invalid_response": "Not a valid Infuse Now Playing endpoint.",
+      "invalid_host": "Enter a host or IP address, not a URL.",
+      "unknown": "Unexpected error. Check logs."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "not_supported": "Device information is missing."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Infuse settings",
+        "description": "TMDB artwork is optional. Leave the token blank to keep the current token.",
+        "data": {
+          "poll_interval": "Poll interval (seconds)",
+          "language": "Poster metadata language",
+          "tmdb_token": "TMDB API Read Access Token (optional)",
+          "clear_tmdb_token": "Remove stored TMDB token"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "progress": {
+        "name": "Progress"
+      },
+      "remaining": {
+        "name": "Time remaining"
+      },
+      "latency": {
+        "name": "API latency"
+      }
+    },
+    "binary_sensor": {
+      "playing": {
+        "name": "Video playing"
+      }
+    }
+  }
+}
