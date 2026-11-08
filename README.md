@@ -31,19 +31,31 @@ Infuse **8.5.9+** with **Settings → Playback → Now Playing API** enabled, a 
 
 ## Installation
 
-### HACS custom repository
+### Home Assistant 2026.11+ — Marketplace
 
-In HACS, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration**. Download **Infuse Now Playing**, restart Home Assistant, and use **Settings → Devices & services → Add integration**.
+Starting with **Home Assistant 2026.11** (released November 4, 2026), HACS is part of Home Assistant as the built-in **Marketplace**, found under **Settings → Marketplace**. Existing HACS installations and custom repositories migrate automatically on the first start after the Home Assistant update; you **do not need to reinstall Infuse or delete your existing config entry**. Home Assistant preserves your config entry options (including any TMDB token) and entity IDs.
+
+This repository is the **Integration** package and already meets the Marketplace repository layout (`hacs.json` and `custom_components/infuse/`). If you previously added it as a HACS custom repository, it migrates to Marketplace as that same repository. For a fresh install on 2026.11+, open **Settings → Marketplace → ⋮ → Custom repositories**, add `https://github.com/Manantra/ha-infuse` with category **Integration**, and install it. Once it is in the Marketplace catalog, users can install it directly by searching for Infuse. **Catalog submission/approval is separate from repository compatibility.**
+
+[Open Infuse Now Playing in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=Manantra&repository=ha-infuse&category=integration) (Home Assistant 2026.11+).
+
+**Custom dashboard cards are a separate Marketplace package.** Install [Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards) as category **Dashboard** to get automatic JavaScript resource registration and card updates, instead of copying `examples/www/*.js` by hand. The cards package contains both `custom:infuse-now-playing-card` and `custom:infuse-household-card` under the same element names, so existing dashboard YAML continues to work. [Open the cards in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=Manantra&repository=ha-infuse-cards&category=plugin).
+
+If you previously copied the cards to `/config/www/` manually, first **remove their old dashboard resource registrations** (`/local/infuse-now-playing-card.js`, `/local/infuse-household-card.js`), then install the Marketplace cards package. The old files can remain as an unused backup but must not be loaded alongside the new package: an old JavaScript module could register the same custom card first and hide new editor features. The Marketplace-managed resource is at `/local/community/ha-infuse-cards/infuse-dashboard-cards.js` and updates automatically. Refresh your browser afterward. If you manage dashboard resources in YAML, follow the Marketplace installer prompt to add the resource manually.
+
+### Home Assistant 2026.10 and older — HACS
+
+Keep using HACS on older Home Assistant versions. In HACS, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration**. Download **Infuse Now Playing**, restart Home Assistant, and use **Settings → Devices & services → Add integration**. To install the managed cards, add `https://github.com/Manantra/ha-infuse-cards` as a separate **Dashboard** custom repository in HACS.
 
 ### Manual installation
 
 Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart Home Assistant, then add **Infuse Now Playing** under **Settings → Devices & services**.
 
-The custom dashboard cards are optional. Their JavaScript files are in `examples/www/`; install them to `<config>/www/` and register each `/local/*.js` resource as a JavaScript module.
+The custom dashboard cards are optional. **Prefer the separate [Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards) Marketplace/HACS repository** for managed installs and updates. Manual installation remains possible: copy the JavaScript files from `examples/www/` to `<config>/www/` and register the corresponding `/local/*.js` paths as JavaScript-module dashboard resources.
 
 ### Optional information tiles in the Infuse Now Playing dashboard card
 
-The single-device **Infuse Now Playing** card has three independently configurable bottom information tiles: **Status**, **Progress**, and **Time remaining**. They are all enabled by default, so existing cards look unchanged. In the card's visual dashboard editor, use the three checkboxes under **Show bottom info tiles** (German: **Untere Infokacheln anzeigen**). You can also set the corresponding YAML options to `false`:
+The single-device **Infuse Now Playing** card uses Home Assistant's **searchable entity picker** in the visual editor (filtered to media players), plus three independently configurable bottom information tiles: **Status**, **Progress**, and **Time remaining**. They are all enabled by default, so existing cards look unchanged. In the card's visual dashboard editor, use the three checkboxes under **Show bottom info tiles** (German: **Untere Infokacheln anzeigen**). You can also set the corresponding YAML options to `false`:
 
 ```yaml
 type: custom:infuse-now-playing-card
@@ -56,7 +68,7 @@ show_remaining: false
 
 The settings only control the **three bottom tiles**: the large playback status label (for example, *Pausiert*), cover, title, progress bar, and time indicators stay visible. When all three bottom tiles are disabled, their entire row is removed and the card becomes more compact. The options are display-only and do not alter the media-player entity or connection recovery.
 
-**Existing installation:** The custom card JS is not automatically copied by HACS, because it is an optional example outside the integration folder. After updating, replace `<config>/www/infuse-now-playing-card.js` with the newer `examples/www/infuse-now-playing-card.js` from this repository. Make sure `/local/infuse-now-playing-card.js` is registered as a **JavaScript module** in your dashboard resources; reload the browser/dashboard (or update the resource URL with a version query parameter) if the old card remains cached. You do not need to re-add the Infuse device or change your TMDB token.
+**Manual card installation:** The custom card JS is not automatically copied by HACS or Marketplace when updating the **integration**, because it is an optional example outside `custom_components/infuse/`. The recommended solution is the separate [Infuse Dashboard Cards package](https://github.com/Manantra/ha-infuse-cards), which registers and updates the dashboard resource automatically. If you still use a manual card copy, replace `<config>/www/infuse-now-playing-card.js` with the newer `examples/www/infuse-now-playing-card.js` from this repository. Make sure `/local/infuse-now-playing-card.js` is registered as a **JavaScript module** in your dashboard resources; reload the browser/dashboard (or update the resource URL with a version query parameter) if the old card remains cached. You do not need to re-add the Infuse device or change your TMDB token.
 
 ## What is and is not available
 

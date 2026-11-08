@@ -11,6 +11,10 @@ class InfuseNowPlayingCard extends HTMLElement {
   }
   set hass(value) { this._hass = value; this.render(); }
   static getConfigElement() { return document.createElement("infuse-now-playing-card-editor"); }
+  static getStubConfig(_hass, entities = [], entitiesFallback = []) {
+    const available = [...entities, ...entitiesFallback].filter(id => id.startsWith("media_player."));
+    return {entity: available.find(id => id.includes("infuse")) || available[0] || "media_player.select_entity"};
+  }
   getCardSize() { return this._hasStats() ? 5 : 4; }
   getGridOptions() { return {columns:12, rows:this._hasStats()?5:4, min_columns:6}; }
   _hasStats() {
@@ -66,17 +70,38 @@ class InfuseNowPlayingCard extends HTMLElement {
 class InfuseNowPlayingCardEditor extends HTMLElement {
   constructor() { super(); this.attachShadow({mode:"open"}); }
   setConfig(config) { this._config = {...config}; this.render(); }
-  set hass(value) { this._hass = value; this.render(); }
+  set hass(value) {
+    this._hass = value;
+    const language = (value?.language || "en").startsWith("de") ? "de" : "en";
+    // Home Assistant refreshes hass frequently. Do not destroy the picker
+    // while its search popup is open or the user is typing a title.
+    if (this._config && this._renderedLanguage !== language) this.render();
+    else if (this._entityPicker) this._entityPicker.hass = value;
+  }
   render() {
     if (!this._config) return;
     const de = (this._hass?.language || "en").startsWith("de");
+    this._renderedLanguage = de ? "de" : "en";
     const options = [
       ["show_status", "Status"],
       ["show_progress", de ? "Fortschritt" : "Progress"],
       ["show_remaining", de ? "Restzeit" : "Time remaining"],
     ];
     const escape = InfuseNowPlayingCard.escape;
-    this.shadowRoot.innerHTML = '<style>:host{display:block;font-family:var(--primary-font-family,system-ui)}.fields{display:grid;gap:16px}.field{display:grid;gap:5px}.field>span{font-size:14px}.field input{box-sizing:border-box;width:100%;padding:10px 12px;border:1px solid var(--divider-color,#a9a9a9);border-radius:8px;background:var(--card-background-color,transparent);color:var(--primary-text-color,inherit);font:inherit}.header{font-size:14px;font-weight:600;margin:20px 0 9px}.option{display:flex;gap:12px;align-items:center;padding:9px 0;cursor:pointer}.option input{width:18px;height:18px;accent-color:var(--primary-color,#ed933a);cursor:pointer}.description{color:var(--secondary-text-color,#777);font-size:12px;margin-top:8px}</style><div class="fields"><label class="field"><span>'+ (de ? "Media-Player-Entität" : "Media player entity") +'</span><input data-field="entity" type="text" placeholder="media_player.apple_tv_infuse_player" value="'+escape(this._config.entity || "")+'"></label><label class="field"><span>'+ (de ? "Anzeigename (optional)" : "Title (optional)") +'</span><input data-field="title" type="text" value="'+escape(this._config.title || "")+'"></label></div><div class="header">'+(de ? "Untere Infokacheln anzeigen" : "Show bottom info tiles")+'</div>'+options.map(([key,label])=>'<label class="option"><input type="checkbox" data-option="'+key+'" '+(this._config[key] !== false ? 'checked' : '')+'><span>'+label+'</span></label>').join("")+'<div class="description">'+(de ? "Alle drei Kacheln sind standardmäßig sichtbar. Fortschrittsbalken, Zeiten und Wiedergabestatus oben bleiben unverändert." : "All three tiles are enabled by default. The progress bar, times and playback status above them are unchanged.")+'</div>';
+    this.shadowRoot.innerHTML = '<style>:host{display:block;font-family:var(--primary-font-family,system-ui)}.fields{display:grid;gap:16px}.field{display:grid;gap:5px}.field>span{font-size:14px}.field input{box-sizing:border-box;width:100%;padding:10px 12px;border:1px solid var(--divider-color,#a9a9a9);border-radius:8px;background:var(--card-background-color,transparent);color:var(--primary-text-color,inherit);font:inherit}.header{font-size:14px;font-weight:600;margin:20px 0 9px}.option{display:flex;gap:12px;align-items:center;padding:9px 0;cursor:pointer}.option input{width:18px;height:18px;accent-color:var(--primary-color,#ed933a);cursor:pointer}.description{color:var(--secondary-text-color,#777);font-size:12px;margin-top:8px}</style><div class="fields"><div class="field"><ha-entity-picker id="infuse-entity" label="'+(de ? "Media-Player-Entität" : "Media player entity")+'" show-entity-id required></ha-entity-picker></div><label class="field"><span>'+ (de ? "Anzeigename (optional)" : "Title (optional)") +'</span><input data-field="title" type="text" value="'+escape(this._config.title || "")+'"></label></div><div class="header">'+(de ? "Untere Infokacheln anzeigen" : "Show bottom info tiles")+'</div>'+options.map(([key,label])=>'<label class="option"><input type="checkbox" data-option="'+key+'" '+(this._config[key] !== false ? 'checked' : '')+'><span>'+label+'</span></label>').join("")+'<div class="description">'+(de ? "Alle drei Kacheln sind standardmäßig sichtbar. Fortschrittsbalken, Zeiten und Wiedergabestatus oben bleiben unverändert." : "All three tiles are enabled by default. The progress bar, times and playback status above them are unchanged.")+'</div>';
+    const picker = this.shadowRoot.querySelector("ha-entity-picker");
+    this._entityPicker = picker;
+    if (picker) {
+      picker.hass = this._hass;
+      picker.value = this._config.entity || "";
+      picker.includeDomains = ["media_player"];
+      picker.addEventListener("value-changed", (event) => {
+        event.stopPropagation();
+        const value = event.detail?.value;
+        if (typeof value !== "string" || !value.startsWith("media_player.") || value === this._config.entity) return;
+        this._emitConfig({...this._config, entity: value});
+      });
+    }
     for (const input of this.shadowRoot.querySelectorAll("input[data-option]")) {
       input.addEventListener("change", () => {
         const config = {...this._config};
@@ -105,4 +130,4 @@ class InfuseNowPlayingCardEditor extends HTMLElement {
 if(!customElements.get("infuse-now-playing-card-editor")) customElements.define("infuse-now-playing-card-editor",InfuseNowPlayingCardEditor);
 if(!customElements.get("infuse-now-playing-card")) customElements.define("infuse-now-playing-card",InfuseNowPlayingCard);
 window.customCards=window.customCards||[];
-if(!window.customCards.some(x=>x.type==="infuse-now-playing-card")) window.customCards.push({type:"infuse-now-playing-card",name:"Infuse Now Playing",description:"Infuse-inspired read-only playback card"});
+if(!window.customCards.some(x=>x.type==="infuse-now-playing-card")) window.customCards.push({type:"infuse-now-playing-card",name:"Infuse Now Playing",description:"Infuse-inspired read-only playback card",documentationURL:"https://github.com/Manantra/ha-infuse",getEntitySuggestion: (_hass, entityId) => entityId.startsWith("media_player.") && entityId.includes("infuse") ? {config:{type:"custom:infuse-now-playing-card",entity:entityId}} : null});

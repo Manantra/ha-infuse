@@ -1,20 +1,20 @@
 {
   "domain": "infuse",
   "name": "Infuse Now Playing",
-  "version": "0.2.8",
-  "config_flow": true,
-  "documentation": "https://github.com/Manantra/ha-infuse",
-  "issue_tracker": "https://github.com/Manantra/ha-infuse/issues",
   "codeowners": [
     "@Manantra"
   ],
-  "iot_class": "local_polling",
+  "config_flow": true,
+  "documentation": "https://github.com/Manantra/ha-infuse",
   "integration_type": "device",
-  "requirements": [],
-  "zeroconf": [
-    "_infuse-np._tcp.local."
-  ],
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Manantra/ha-infuse/issues",
   "loggers": [
     "custom_components.infuse"
+  ],
+  "requirements": [],
+  "version": "0.2.9",
+  "zeroconf": [
+    "_infuse-np._tcp.local."
   ]
 }

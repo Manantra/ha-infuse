@@ -8,6 +8,15 @@ class FakeShadow {
   get innerHTML() { return this._html; }
   querySelector(selector) {
     if (selector === 'button.details') return {onclick: null};
+    if (selector === 'ha-entity-picker') {
+      if (!this.innerHTML.includes('<ha-entity-picker ')) return null;
+      const picker = {
+        value: undefined, hass: undefined, includeDomains: undefined,
+        listeners: {}, addEventListener(type, cb) {this.listeners[type] = cb;},
+      };
+      this.controls.push(picker);
+      return picker;
+    }
     return null;
   }
   querySelectorAll(selector) {
@@ -123,16 +132,16 @@ test('visual editor shows three switches localized into German', () => {
   assert.match(html, /Fortschritt/);
   assert.match(html, /Restzeit/);
   assert.equal((html.match(/data-option=/g) ?? []).length, 3);
-  const options = editor.shadowRoot.controls.filter(c => c.dataset.option);
+  const options = editor.shadowRoot.controls.filter(c => c.dataset?.option);
   assert.equal(options.filter(c => c.checked).length, 2);
-  assert.equal(options.find(c => c.dataset.option === 'show_progress').checked, false);
+  assert.equal(options.find(c => c.dataset?.option === 'show_progress').checked, false);
 });
 
 test('visual editor toggles emit configuration changes and preserve other fields', () => {
   const editor = Card.getConfigElement();
   editor.setConfig({type: 'custom:infuse-now-playing-card', entity: ENTITY, title: 'Wohnzimmer'});
   editor.hass = {language: 'en'};
-  const status = editor.shadowRoot.controls.find(c => c.dataset.option === 'show_status');
+  const status = editor.shadowRoot.controls.find(c => c.dataset?.option === 'show_status');
   status.checked = false;
   status.listeners.change();
   assert.equal(editor.events.at(-1).type, 'config-changed');
@@ -142,8 +151,67 @@ test('visual editor toggles emit configuration changes and preserve other fields
   assert.equal(editor.events.at(-1).bubbles, true);
   assert.equal(editor.events.at(-1).composed, true);
   editor.setConfig(editor.events.at(-1).detail.config);
-  const status2 = editor.shadowRoot.controls.find(c => c.dataset.option === 'show_status');
+  const status2 = editor.shadowRoot.controls.find(c => c.dataset?.option === 'show_status');
   status2.checked = true;
   status2.listeners.change();
   assert.equal('show_status' in editor.events.at(-1).detail.config, false);
+});
+
+
+test('media-player entity picker uses real HA picker with media_player filter', () => {
+  const editor = Card.getConfigElement();
+  editor.setConfig({type: 'custom:infuse-now-playing-card', entity: ENTITY, title: 'Wohnzimmer'});
+  const hass = {language: 'de', states: {[ENTITY]: {state: 'paused'}}};
+  editor.hass = hass;
+  assert.match(editor.shadowRoot.innerHTML, /<ha-entity-picker/);
+  assert.doesNotMatch(editor.shadowRoot.innerHTML, /data-field="entity"/);
+  const picker = editor._entityPicker;
+  assert.equal(picker.hass, hass);
+  assert.equal(picker.value, ENTITY);
+  assert.deepEqual(picker.includeDomains, ['media_player']);
+  assert.ok(picker.listeners['value-changed']);
+  let propagationStopped = false;
+  picker.listeners['value-changed']({
+    detail: {value: 'media_player.infuse_kuche'},
+    stopPropagation() {propagationStopped = true;},
+  });
+  assert.equal(propagationStopped, true);
+  assert.equal(editor.events.at(-1).detail.config.entity, 'media_player.infuse_kuche');
+  assert.equal(editor.events.at(-1).detail.config.title, 'Wohnzimmer');
+  assert.equal(editor.events.at(-1).detail.config.type, 'custom:infuse-now-playing-card');
+});
+
+test('entity picker rejects non-media-player IDs', () => {
+  const editor = Card.getConfigElement();
+  editor.setConfig({type: 'custom:infuse-now-playing-card', entity: ENTITY});
+  editor.hass = {language: 'en'};
+  const picker = editor._entityPicker;
+  for (const value of ['switch.xyz', 'sensor.xyz', '', undefined]) {
+    picker.listeners['value-changed']({detail: {value}, stopPropagation() {}});
+    assert.equal(editor.events, undefined);
+  }
+});
+
+test('hass updates do not destroy focused entity picker', () => {
+  const editor = Card.getConfigElement();
+  editor.setConfig({type: 'custom:infuse-now-playing-card', entity: ENTITY});
+  editor.hass = {language: 'de', states: {}};
+  const picker = editor._entityPicker;
+  const html = editor.shadowRoot.innerHTML;
+  const newestHass = {language: 'de', states: {[ENTITY]: {state: 'paused'}}};
+  editor.hass = newestHass;
+  assert.equal(editor._entityPicker, picker);
+  assert.equal(editor.shadowRoot.innerHTML, html);
+  assert.equal(picker.hass, newestHass);
+});
+
+test('new card defaults to a media player entity, preferring Infuse', () => {
+  assert.deepEqual(Card.getStubConfig({}, ['media_player.tv', ENTITY, 'sensor.x']), {entity: ENTITY});
+  assert.deepEqual(Card.getStubConfig({}, ['media_player.tv']), {entity: 'media_player.tv'});
+  assert.ok(Card.getStubConfig({}, []).entity.startsWith('media_player.'));
+  const picker = window.customCards.find(card => card.type === 'infuse-now-playing-card');
+  assert.deepEqual(picker.getEntitySuggestion({}, ENTITY), {
+    config: {type: 'custom:infuse-now-playing-card', entity: ENTITY},
+  });
+  assert.equal(picker.getEntitySuggestion({}, 'light.living_room'), null);
 });
