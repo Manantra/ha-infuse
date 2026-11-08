@@ -33,7 +33,7 @@ Want a more visual dashboard? Our optional **[Infuse Dashboard Cards](https://gi
 |:---:|:---:|
 | [![Single Infuse device example: paused episode with cover and three configurable information tiles](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/single-device.png)](https://github.com/Manantra/ha-infuse-cards#single-device-card) | [![Infuse household example: three Apple TVs playing, paused and idle](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/multiple-devices.png)](https://github.com/Manantra/ha-infuse-cards#multiple-devices) |
 
-*Real card renderings with fictional example content.* The single-player card includes a visual editor with a searchable entity picker, optional status/progress/remaining tiles, and artwork. The household card shows multiple devices side by side in one overview.
+*Real card renderings with fictional example content.* **Both cards now have visual editors**: the single-player card includes a searchable entity picker and optional status/progress/remaining tiles; the **Household card** lets you add, remove and reorder multiple media players, set a heading and optionally assign an external profile sensor to each device. No YAML editing is required.
 
 **[View screenshots, configuration examples and installation instructions →](https://github.com/Manantra/ha-infuse-cards)**
 

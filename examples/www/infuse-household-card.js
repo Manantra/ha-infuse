@@ -5,6 +5,13 @@ class InfuseHouseholdCard extends HTMLElement {
     this.config=config;this.render();
   }
   set hass(value){this._hass=value;this.render();}
+  static getConfigElement(){return document.createElement("infuse-household-card-editor");}
+  static getStubConfig(hass, entities = [], entitiesFallback = []){
+    const candidates=[...entities,...entitiesFallback,...Object.keys(hass?.states||{})]
+      .filter(id=>id.startsWith("media_player."));
+    const infuse=[...new Set(candidates.filter(id=>id.toLowerCase().includes("infuse")))];
+    return {entities:infuse.length?infuse:[candidates[0]||"media_player.select_entity"]};
+  }
   getCardSize(){return Math.max(3,(this.config?.entities?.length||1)*2);}
   static escape(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   static clock(value){if(!Number.isFinite(value))return "–:––";const s=Math.max(0,Math.floor(value));return (Math.floor(s/3600)?Math.floor(s/3600)+":"+String(Math.floor(s/60)%60).padStart(2,"0"):String(Math.floor(s/60)))+":"+String(s%60).padStart(2,"0");}
@@ -34,6 +41,132 @@ class InfuseHouseholdCard extends HTMLElement {
   connectedCallback(){this.timer=setInterval(()=>this.render(),1000);}
   disconnectedCallback(){clearInterval(this.timer);}
 }
+/** Visual editor for a configurable household of Infuse players. */
+class InfuseHouseholdCardEditor extends HTMLElement {
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(config){
+    this._config={...config,entities:[...(config.entities||[])]};
+    this.render();
+  }
+  set hass(value){
+    this._hass=value;
+    const language=(value?.language||"en").startsWith("de")?"de":"en";
+    // HA passes new hass snapshots several times a second. Keep picker popups
+    // and text focus intact instead of replacing the editor DOM each time.
+    if(this._config&&this._renderedLanguage!==language)this.render();
+    else for(const picker of this._pickers||[])picker.hass=value;
+  }
+  render(){
+    if(!this._config)return;
+    const de=(this._hass?.language||"en").startsWith("de");
+    this._renderedLanguage=de?"de":"en";
+    const safe=InfuseHouseholdCard.escape;
+    const players=this._config.entities;
+    const row=(id,index)=>'<div class="device-row" data-row="'+index+'">'
+      +'<div class="device-head"><strong>'+(de?"Gerät ":"Device ")+(index+1)+'</strong><div class="actions">'
+      +'<button type="button" data-action="up" data-index="'+index+'" aria-label="'+(de?"Nach oben":"Move up")+'" title="'+(de?"Nach oben":"Move up")+'" '+(index===0?'disabled':'')+'>↑</button>'
+      +'<button type="button" data-action="down" data-index="'+index+'" aria-label="'+(de?"Nach unten":"Move down")+'" title="'+(de?"Nach unten":"Move down")+'" '+(index===players.length-1?'disabled':'')+'>↓</button>'
+      +'<button type="button" data-action="remove" data-index="'+index+'" aria-label="'+(de?"Gerät entfernen":"Remove device")+'" title="'+(de?"Entfernen":"Remove")+'" '+(players.length<=1?'disabled':'')+'>×</button></div></div>'
+      +'<ha-entity-picker data-device-index="'+index+'" label="'+(de?"Media Player":"Media player")+'" show-entity-id required></ha-entity-picker>'
+      +'<ha-entity-picker data-profile-index="'+index+'" label="'+(de?"Externer Profilsensor (optional)":"External profile sensor (optional)")+'" show-entity-id></ha-entity-picker>'
+      +'</div>';
+    this.shadowRoot.innerHTML='<style>:host{display:block;font-family:var(--primary-font-family,system-ui)}*{box-sizing:border-box}.field{display:grid;gap:7px;margin-bottom:16px}.field span,.section{font-size:14px;font-weight:600}.field input{width:100%;padding:11px 12px;border:1px solid var(--divider-color,#888);border-radius:8px;background:var(--card-background-color,transparent);color:var(--primary-text-color,inherit);font:inherit}.section{margin:22px 0 12px}.device-row{display:grid;gap:12px;border:1px solid var(--divider-color,#888);border-radius:12px;padding:14px;margin-bottom:12px}.device-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.actions{display:flex;gap:6px}.actions button{cursor:pointer;border:1px solid var(--divider-color,#888);border-radius:7px;padding:3px 9px;background:var(--card-background-color,transparent);color:var(--primary-text-color,inherit);font:inherit}.actions button:disabled{opacity:.28;cursor:not-allowed}.add-row{display:grid;gap:10px;padding:14px;border:1px dashed var(--divider-color,#888);border-radius:12px}.hint{font-size:12px;color:var(--secondary-text-color,#777);line-height:1.5}.device-row ha-entity-picker,.add-row ha-entity-picker{display:block}</style>'
+      +'<label class="field"><span>'+(de?"Kartenüberschrift":"Card title")+'</span><input data-title type="text" value="'+safe(this._config.title||"")+'" placeholder="Infuse"></label>'
+      +'<div class="section">'+(de?"Infuse-Geräte":"Infuse devices")+'</div>'
+      +players.map(row).join("")
+      +'<div class="add-row"><ha-entity-picker data-add label="'+(de?"Gerät hinzufügen":"Add a device")+'" show-entity-id></ha-entity-picker><div class="hint">'+(de?"Wähle einen weiteren Media Player aus. Die Geräte werden in dieser Reihenfolge angezeigt.":"Choose another media player. Devices appear in the order shown above.")+'</div></div>'
+      +'<p class="hint">'+(de?"Externe Profilsensoren sind optional und stammen nicht aus der Infuse-API.":"External profile sensors are optional and are not provided by the Infuse API.")+'</p>';
+    const title=this.shadowRoot.querySelector('input[data-title]');
+    title?.addEventListener('change',()=>{
+      const value=title.value.trim();
+      const config={...this._config};
+      if(value)config.title=value;
+      else delete config.title;
+      this._emitConfig(config);
+    });
+    this._pickers=[];
+    for(const picker of this.shadowRoot.querySelectorAll('ha-entity-picker')){
+      picker.hass=this._hass;
+      this._pickers.push(picker);
+      const index=Number(picker.dataset.deviceIndex??picker.dataset.profileIndex);
+      if(picker.hasAttribute('data-add')){
+        picker.value='';
+        picker.includeDomains=['media_player'];
+        picker.addEventListener('value-changed',event=>{
+          event.stopPropagation();
+          const value=event.detail?.value;
+          if(typeof value!=="string"||!value.startsWith('media_player.')||this._config.entities.includes(value))return;
+          this._emitConfig({...this._config,entities:[...this._config.entities,value]});
+        });
+      }else if(picker.hasAttribute('data-device-index')){
+        picker.value=players[index];
+        picker.includeDomains=['media_player'];
+        picker.addEventListener('value-changed',event=>{
+          event.stopPropagation();
+          const value=event.detail?.value;
+          if(typeof value!=="string"||!value.startsWith('media_player.')||this._config.entities[index]===value||this._config.entities.includes(value))return;
+          const entities=[...this._config.entities];
+          const old=entities[index];
+          entities[index]=value;
+          // Keep a manually configured external profile sensor with its row.
+          const profile_entities={...(this._config.profile_entities||{})};
+          if(Object.hasOwn(profile_entities,old)){
+            profile_entities[value]=profile_entities[old];
+            delete profile_entities[old];
+          }
+          const config={...this._config,entities};
+          if(Object.keys(profile_entities).length)config.profile_entities=profile_entities;
+          else delete config.profile_entities;
+          this._emitConfig(config);
+        });
+      }else if(picker.hasAttribute('data-profile-index')){
+        picker.value=this._config.profile_entities?.[players[index]]||'';
+        picker.includeDomains=['sensor'];
+        picker.addEventListener('value-changed',event=>{
+          event.stopPropagation();
+          const value=event.detail?.value;
+          if(value!==undefined&&value!==null&&value!==''&&(typeof value!=="string"||!value.startsWith('sensor.')))return;
+          const profile_entities={...(this._config.profile_entities||{})};
+          const entity=this._config.entities[index];
+          if(value)profile_entities[entity]=value;
+          else delete profile_entities[entity];
+          const config={...this._config};
+          if(Object.keys(profile_entities).length)config.profile_entities=profile_entities;
+          else delete config.profile_entities;
+          this._emitConfig(config);
+        });
+      }
+    }
+    for(const button of this.shadowRoot.querySelectorAll('button[data-action]')){
+      button.addEventListener('click',()=>{
+        const index=Number(button.dataset.index);
+        const entities=[...this._config.entities];
+        if(button.dataset.action==='remove'){
+          if(entities.length<=1)return;
+          const removed=entities.splice(index,1)[0];
+          const profile_entities={...(this._config.profile_entities||{})};
+          delete profile_entities[removed];
+          const config={...this._config,entities};
+          if(Object.keys(profile_entities).length)config.profile_entities=profile_entities;
+          else delete config.profile_entities;
+          this._emitConfig(config);
+        }else{
+          const target=index+(button.dataset.action==='up'?-1:1);
+          if(target<0||target>=entities.length)return;
+          [entities[index],entities[target]]=[entities[target],entities[index]];
+          this._emitConfig({...this._config,entities});
+        }
+      });
+    }
+  }
+  _emitConfig(config){
+    this._config=config;
+    this.dispatchEvent(new CustomEvent('config-changed',{
+      detail:{config},bubbles:true,composed:true,
+    }));
+  }
+}
+if(!customElements.get("infuse-household-card-editor"))customElements.define("infuse-household-card-editor",InfuseHouseholdCardEditor);
 if(!customElements.get("infuse-household-card")) customElements.define("infuse-household-card",InfuseHouseholdCard);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(x=>x.type==="infuse-household-card"))window.customCards.push({type:"infuse-household-card",name:"Infuse Household",description:"Multiple independent Infuse device sessions"});
