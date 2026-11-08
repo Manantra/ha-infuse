@@ -6,6 +6,10 @@ views:
     cards:
       - type: custom:infuse-now-playing-card
         entity: media_player.infuse_wohnzimmer
+        # Optional bottom tiles (all true by default):
+        show_status: true
+        show_progress: true
+        show_remaining: false
       - type: entities
         title: Playback details
         entities:

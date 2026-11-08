@@ -41,6 +41,23 @@ Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart 
 
 The custom dashboard cards are optional. Their JavaScript files are in `examples/www/`; install them to `<config>/www/` and register each `/local/*.js` resource as a JavaScript module.
 
+### Optional information tiles in the Infuse Now Playing dashboard card
+
+The single-device **Infuse Now Playing** card has three independently configurable bottom information tiles: **Status**, **Progress**, and **Time remaining**. They are all enabled by default, so existing cards look unchanged. In the card's visual dashboard editor, use the three checkboxes under **Show bottom info tiles** (German: **Untere Infokacheln anzeigen**). You can also set the corresponding YAML options to `false`:
+
+```yaml
+type: custom:infuse-now-playing-card
+entity: media_player.apple_tv_infuse_player
+title: Apple TV Wohnzimmer
+show_status: false
+show_progress: true
+show_remaining: false
+```
+
+The settings only control the **three bottom tiles**: the large playback status label (for example, *Pausiert*), cover, title, progress bar, and time indicators stay visible. When all three bottom tiles are disabled, their entire row is removed and the card becomes more compact. The options are display-only and do not alter the media-player entity or connection recovery.
+
+**Existing installation:** The custom card JS is not automatically copied by HACS, because it is an optional example outside the integration folder. After updating, replace `<config>/www/infuse-now-playing-card.js` with the newer `examples/www/infuse-now-playing-card.js` from this repository. Make sure `/local/infuse-now-playing-card.js` is registered as a **JavaScript module** in your dashboard resources; reload the browser/dashboard (or update the resource URL with a version query parameter) if the old card remains cached. You do not need to re-add the Infuse device or change your TMDB token.
+
 ## What is and is not available
 
 | Capability | Support |

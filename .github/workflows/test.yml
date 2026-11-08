@@ -31,3 +31,4 @@ jobs:
         run: |
           node --check examples/www/infuse-now-playing-card.js
           node --check examples/www/infuse-household-card.js
+          node --test tests/test_now_playing_card.mjs
