@@ -25,6 +25,18 @@
 - Optional Infuse-inspired Lovelace cards for single-player and household views.
 - Firecore library and stream URL-generation actions.
 
+## Infuse Dashboard Cards — previews
+
+Want a more visual dashboard? Our optional **[Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards)** package contains both a beautiful single-player view and a household overview for multiple Infuse devices. The cards are installed and updated **separately** through the Home Assistant Marketplace or HACS. They use the media-player entities exposed by this integration and do not affect playback detection or the existing Infuse configuration.
+
+| [Single-device card](https://github.com/Manantra/ha-infuse-cards#single-device-card) | [Multiple devices card](https://github.com/Manantra/ha-infuse-cards#multiple-devices) |
+|:---:|:---:|
+| [![Single Infuse device example: paused episode with cover and three configurable information tiles](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/single-device.png)](https://github.com/Manantra/ha-infuse-cards#single-device-card) | [![Infuse household example: three Apple TVs playing, paused and idle](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/multiple-devices.png)](https://github.com/Manantra/ha-infuse-cards#multiple-devices) |
+
+*Real card renderings with fictional example content.* The single-player card includes a visual editor with a searchable entity picker, optional status/progress/remaining tiles, and artwork. The household card shows multiple devices side by side in one overview.
+
+**[View screenshots, configuration examples and installation instructions →](https://github.com/Manantra/ha-infuse-cards)**
+
 ## Requirements
 
 Infuse **8.5.9+** with **Settings → Playback → Now Playing API** enabled, a reachable local network and a compatible Home Assistant installation. The Infuse API port is dynamically assigned; Bonjour discovery is recommended.
