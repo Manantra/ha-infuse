@@ -57,3 +57,34 @@ async def test_do_not_query_external_or_unknown_hosts(monkeypatch):
     assert await unicast.async_resolve_unicast(NAME, "2001:db8::1") is None
     assert await unicast.async_resolve_unicast("unrelated._tcp.local.", "192.168.178.133") is None
     assert called == []
+
+
+def ptr_response(instance: str, *, owner: str = "_infuse-np._tcp.local.", rr_type: int = 12, flags: int = 0x8400) -> bytes:
+    import struct
+    service = unicast._encode_dns_name(owner)
+    target = unicast._encode_service_name(instance)
+    question = service + struct.pack('!HH', 12, 0x8001)
+    rr = service + struct.pack('!HHIH', rr_type, 1, 120, len(target)) + target
+    return struct.pack('!HHHHHH', 0, flags, 1, 1, 0, 0) + question + rr
+
+
+def test_ptr_discovery_only_accepts_named_infuse_services():
+    instance = 'Apple TV._infuse-np._tcp.local.'
+    service = '_infuse-np._tcp.local.'
+    assert unicast.parse_ptr_services(ptr_response(instance), service) == (instance,)
+    assert unicast.parse_ptr_services(ptr_response(instance, rr_type=16), service) == ()
+    assert unicast.parse_ptr_services(ptr_response(instance, owner='_http._tcp.local.'), service) == ()
+    assert unicast.parse_ptr_services(ptr_response('Another._http._tcp.local.'), service) == ()
+    assert unicast.parse_ptr_services(ptr_response(instance, flags=0), service) == ()
+    assert unicast.parse_ptr_services(ptr_response(instance)[:-1], service) == ()
+    assert unicast.parse_ptr_services(b'garbage', service) == ()
+    assert unicast.parse_ptr_services(b'Z' * 5000, service) == ()
+
+
+@pytest.mark.asyncio
+async def test_ptr_discovery_rejects_nonpaired_addresses_without_opening_socket(monkeypatch):
+    touched = []
+    monkeypatch.setattr(unicast.socket, 'socket', lambda *args: touched.append(args))
+    assert await unicast.async_discover_unicast_services('example.com') == ()
+    assert await unicast.async_discover_unicast_services('2001:db8::1234') == ()
+    assert not touched

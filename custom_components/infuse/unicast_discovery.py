@@ -19,14 +19,15 @@ import struct
 
 _DNS_PORT = 5353
 _DNS_SRV = 33
+_DNS_PTR = 12
 _DNS_IN = 1
 _MAX_PACKET = 4096
 
 
-def _encode_service_name(name: str) -> bytes:
-    """Encode an exact DNS-SD instance name (UTF-8 labels, not a hostname URL)."""
+def _encode_dns_name(name: str, *, min_labels: int = 3) -> bytes:
+    """Encode DNS labels safely (including the three-label service type)."""
     labels = name.removesuffix(".").split(".")
-    if len(labels) < 4:
+    if len(labels) < min_labels:
         raise ValueError("not a DNS-SD service name")
     parts = []
     for label in labels:
@@ -38,6 +39,11 @@ def _encode_service_name(name: str) -> bytes:
     if len(encoded_name) > 255:
         raise ValueError("DNS-SD name too long")
     return encoded_name
+
+
+def _encode_service_name(name: str) -> bytes:
+    """Encode an exact DNS-SD instance name (not just the service type)."""
+    return _encode_dns_name(name, min_labels=4)
 
 
 def _read_dns_name(packet: bytes, offset: int) -> tuple[str, int]:
@@ -100,6 +106,81 @@ def parse_srv_port(packet: bytes, expected_name: str) -> int | None:
     except (UnicodeDecodeError, ValueError, struct.error):
         return None
     return None
+
+
+def parse_ptr_services(packet: bytes, service_type: str) -> tuple[str, ...]:
+    """Read bounded DNS-SD PTR records for the Infuse service type only.
+
+    No devices or addresses are trusted from this response: callers still
+    query the known paired IP and verify GET /nowplaying before rebinding.
+    """
+    if not 12 <= len(packet) <= _MAX_PACKET:
+        return ()
+    try:
+        msg_id, flags, questions, answers, authorities, additional = struct.unpack_from("!HHHHHH", packet)
+        if msg_id != 0 or not (flags & 0x8000) or flags & 0x000F or questions > 4:
+            return ()
+        if answers + authorities + additional > 64:
+            return ()
+        offset = 12
+        for _ in range(questions):
+            _, offset = _read_dns_name(packet, offset)
+            if offset + 4 > len(packet):
+                return ()
+            offset += 4
+        names: list[str] = []
+        for _ in range(answers + authorities + additional):
+            owner, offset = _read_dns_name(packet, offset)
+            if offset + 10 > len(packet):
+                return ()
+            rr_type, rr_class, _ttl, rdlen = struct.unpack_from("!HHIH", packet, offset)
+            offset += 10
+            end = offset + rdlen
+            if end > len(packet):
+                return ()
+            if owner.casefold() == service_type.casefold() and rr_type == _DNS_PTR and (rr_class & 0x7FFF) == _DNS_IN:
+                target, consumed = _read_dns_name(packet, offset)
+                if consumed <= end and target.casefold().endswith("." + service_type.casefold()):
+                    if target.casefold() not in {name.casefold() for name in names}:
+                        names.append(target)
+                        if len(names) >= 5:
+                            return tuple(names)
+            offset = end
+        return tuple(names)
+    except (UnicodeDecodeError, ValueError, struct.error):
+        return ()
+
+
+async def async_discover_unicast_services(
+    host: str, *, timeout: float = 1.5,
+) -> tuple[str, ...]:
+    """Targeted PTR query to the *already paired* IPv4 Infuse device.
+
+    Recovers after foregrounding even if Infuse has changed the DNS-SD
+    instance name. No subnet scanning, multicast broadcast, or guessing ports.
+    """
+    from .discovery import SERVICE_TYPE
+
+    try:
+        if ipaddress.ip_address(host).version != 4:
+            return ()
+        question = _encode_dns_name(SERVICE_TYPE)
+    except ValueError:
+        return ()
+    packet = struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0) + question + struct.pack("!HH", _DNS_PTR, 0x8000 | _DNS_IN)
+    loop = asyncio.get_running_loop()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    try:
+        async with asyncio.timeout(timeout):
+            await loop.sock_connect(sock, (host, _DNS_PORT))
+            await loop.sock_sendall(sock, packet)
+            response = await loop.sock_recv(sock, _MAX_PACKET)
+    except (OSError, TimeoutError):
+        return ()
+    finally:
+        sock.close()
+    return parse_ptr_services(response, SERVICE_TYPE)
 
 
 async def async_resolve_unicast(

@@ -10,7 +10,7 @@ def test_marketplace_integration_repository_structure():
     manifest = json.loads((ROOT / 'custom_components/infuse/manifest.json').read_text())
     assert hacs['name'] == 'Infuse Now Playing'
     assert manifest['domain'] == 'infuse'
-    assert manifest['version'] == '0.2.9'
+    assert manifest['version'] == '0.2.10'
     assert (ROOT / 'custom_components/infuse/__init__.py').is_file()
     assert (ROOT / 'custom_components/infuse/brand/icon.png').is_file()
     assert manifest['issue_tracker'].startswith('https://github.com/')

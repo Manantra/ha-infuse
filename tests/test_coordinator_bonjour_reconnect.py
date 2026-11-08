@@ -42,6 +42,7 @@ def coordinator_module(monkeypatch):
         def __init__(self, hass, _logger, **_kwargs):
             self.hass = hass
             self.data = None
+            self.last_update_success = True
 
     update_coordinator.UpdateFailed = UpdateFailed
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
@@ -64,6 +65,23 @@ def coordinator_module(monkeypatch):
         return None
 
     monkeypatch.setattr(module, "async_resolve_unicast", no_unicast)
+
+    async def no_ptr(*_args, **_kwargs):
+        return ()
+
+    monkeypatch.setattr(module, "async_discover_unicast_services", no_ptr)
+    class CandidateClient:
+        def __init__(self, session, host, port):
+            self.endpoint = (host, port)
+
+        async def get_now_playing(self):
+            client = module._test_original_client
+            client.calls.append(self.endpoint)
+            if self.endpoint[1] not in client.reachable_ports:
+                raise ConnectionRefusedError("not an Infuse endpoint")
+            return model.Playback("idle", None, None, None)
+
+    monkeypatch.setattr(module, "InfuseClient", CandidateClient)
     yield module, zeroconf
     sys.modules.pop(fullname, None)
 
@@ -94,7 +112,9 @@ def make_coordinator(module, hass=None, client=None):
         entry_id="test", title="Apple TV Infuse Player", options={},
         data={"discovery_name": SERVICE, "host": HOST, "port": OLD[1]},
     )
-    return module.InfuseCoordinator(hass or Hass(), entry, client or Client(), object(), 5)
+    chosen = client or Client()
+    module._test_original_client = chosen
+    return module.InfuseCoordinator(hass or Hass(), entry, chosen, object(), 5)
 
 
 @pytest.mark.asyncio
@@ -165,8 +185,10 @@ async def test_bonjour_event_proactively_changes_port_and_refreshes_entity(coord
     async def get_ha_instance(_hass):
         return SimpleNamespace(zeroconf=object())
 
-    async def resolver(_hass, _service, _host, *, fresh):
+    async def resolver(_hass, service, _host, *, fresh):
         assert fresh is False
+        if service == "Other._infuse-np._tcp.local.":
+            return ("192.168.178.207", NEW[1])
         return NEW
 
     monkeypatch.setattr(ha_zeroconf, "async_get_async_instance", get_ha_instance, raising=False)
@@ -285,3 +307,246 @@ async def test_ignore_late_stale_bonjour_event_after_unicast_recovery(coordinato
     assert coordinator.client.endpoint == NEW
     assert coordinator.endpoint_changes == 0
     assert refreshes == []
+
+@pytest.mark.asyncio
+async def test_manual_entry_recovers_after_foreground_by_targeted_ptr(coordinator_module, monkeypatch):
+    """Manual installs have no original Bonjour name, but now recover automatically."""
+    module, _ = coordinator_module
+    manual = make_coordinator(module)
+    manual.entry.data.pop("discovery_name")
+    manual._service_name = None
+    names = []
+    directed = []
+
+    async def ptr(host):
+        names.append(host)
+        return (SERVICE,)
+
+    async def resolve(name, host):
+        directed.append((name, host))
+        return NEW
+
+    monkeypatch.setattr(module, "async_discover_unicast_services", ptr)
+    monkeypatch.setattr(module, "async_resolve_unicast", resolve)
+    result = await manual._async_update_data()
+    assert result.state == "idle"
+    assert manual.client.endpoint == NEW
+    assert manual._service_name == SERVICE
+    assert manual.last_resolution == "direct_ptr_unicast"
+    assert names == [HOST]
+    assert directed == [(SERVICE, HOST)]
+    assert manual.client.calls == [OLD, NEW]
+
+
+@pytest.mark.asyncio
+async def test_different_service_name_after_foreground_is_recovered(coordinator_module, monkeypatch):
+    """If Bonjour re-registers a renamed service, accept only the same verified device."""
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    renamed = "Infuse re-opened._infuse-np._tcp.local."
+    queried = []
+
+    async def stale_endpoint(_hass, name, _host, *, fresh):
+        queried.append((name, fresh))
+        return OLD
+
+    async def ptr(host):
+        assert host == HOST
+        return (renamed,)
+
+    async def direct(name, host):
+        assert host == HOST
+        return NEW if name == renamed else OLD
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", stale_endpoint)
+    monkeypatch.setattr(module, "async_discover_unicast_services", ptr)
+    monkeypatch.setattr(module, "async_resolve_unicast", direct)
+    assert (await coordinator._async_update_data()).state == "idle"
+    assert coordinator.client.endpoint == NEW
+    assert coordinator._service_name == renamed
+    assert coordinator.last_resolution == "direct_ptr_unicast"
+    assert queried == [(SERVICE, False), (SERVICE, True)]
+
+
+@pytest.mark.asyncio
+async def test_failed_dns_candidates_never_replace_current_endpoint(coordinator_module, monkeypatch):
+    """Stale service records must not overwrite a valid saved endpoint."""
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    unreachable = (HOST, 59900)
+    mdns = []
+
+    async def stale(_hass, _service, _host, *, fresh):
+        mdns.append(fresh)
+        return unreachable
+
+    async def unicast(_name, _host):
+        return (HOST, 59901)
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", stale)
+    monkeypatch.setattr(module, "async_resolve_unicast", unicast)
+    with pytest.raises(module.UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.client.endpoint == OLD
+    assert coordinator.endpoint_changes == 0
+    assert coordinator.last_resolution == "no_reachable_new_endpoint"
+    assert mdns == [False, True]
+    assert coordinator.client.calls == [OLD, unreachable, (HOST, 59901)]
+
+
+@pytest.mark.asyncio
+async def test_bonjour_watcher_tracks_new_name_for_manual_device(coordinator_module, monkeypatch):
+    module, ha_zeroconf = coordinator_module
+    manual = make_coordinator(module)
+    manual.entry.data.pop("discovery_name")
+    manual._service_name = None
+    registered = []
+
+    class Browser:
+        def __init__(self, instance, type_, handlers):
+            assert type_ == module.SERVICE_TYPE
+            registered.append(handlers[0])
+
+    async def aiozc(_hass):
+        return SimpleNamespace(zeroconf=object())
+
+    async def resolve(_hass, _service, _host, *, fresh):
+        return NEW
+
+    monkeypatch.setattr(module, "AsyncServiceBrowser", Browser)
+    monkeypatch.setattr(ha_zeroconf, "async_get_async_instance", aiozc, raising=False)
+    monkeypatch.setattr(module, "async_resolve_endpoint", resolve)
+    refreshes = []
+
+    async def refresh():
+        refreshes.append(manual.client.endpoint)
+
+    manual.async_request_refresh = refresh
+    await manual.async_start_bonjour_updates()
+    assert len(registered) == 1
+    registered[0](None, module.SERVICE_TYPE, SERVICE, ServiceStateChange.Added)
+    await manual._bonjour_task
+    assert manual.client.endpoint == NEW
+    assert manual.last_resolution == "bonjour_event"
+    assert manual._service_name == SERVICE
+    assert refreshes == [NEW]
+
+
+@pytest.mark.asyncio
+async def test_renamed_service_from_another_ip_is_ignored(coordinator_module, monkeypatch):
+    module, ha_zeroconf = coordinator_module
+    coordinator = make_coordinator(module)
+
+    async def different_ip(_hass, name, _host, *, fresh):
+        return ("192.168.178.248", NEW[1])
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", different_ip)
+    # Original instance name can move to another address (e.g. DHCP). A
+    # different instance name on a different host may not take over this entry.
+    coordinator._bonjour_pending.add("Other._infuse-np._tcp.local.")
+    await coordinator._async_apply_bonjour_update()
+    assert coordinator.client.endpoint == OLD
+    assert coordinator._service_name == SERVICE
+
+
+@pytest.mark.asyncio
+async def test_bonjour_events_arriving_during_resolution_are_drained(coordinator_module, monkeypatch):
+    module, ha_zeroconf = coordinator_module
+    coordinator = make_coordinator(module)
+    first = "Another._infuse-np._tcp.local."
+    second = "Renamed._infuse-np._tcp.local."
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    resolved = []
+
+    async def resolve(_hass, name, _host, *, fresh):
+        resolved.append(name)
+        if name == first:
+            entered.set()
+            await release.wait()
+            return None
+        return NEW
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", resolve)
+    async def refresh():
+        return None
+
+    coordinator.async_request_refresh = refresh
+    coordinator._bonjour_pending.add(first)
+    task = asyncio.create_task(coordinator._async_apply_bonjour_update())
+    await entered.wait()
+    coordinator._bonjour_pending.add(second)
+    release.set()
+    await task
+    assert resolved == [first, second]
+    assert coordinator.client.endpoint == NEW
+    assert coordinator._service_name == second
+
+@pytest.mark.asyncio
+async def test_existing_http_port_recovers_when_infuse_resumes(coordinator_module):
+    """A resumed app may simply reopen its original port without Bonjour."""
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    coordinator.client.reachable_ports = {OLD[1]}
+    coordinator.last_connection_error = "ConnectionRefusedError"
+    coordinator.last_resolution = "no_reachable_new_endpoint"
+    playback = await coordinator._async_update_data()
+    assert playback.state == "idle"
+    assert coordinator.client.endpoint == OLD
+    assert coordinator.last_resolution == "original_port_recovered"
+    assert coordinator.last_connection_error is None
+    assert coordinator.last_successful_contact and coordinator.last_successful_contact.endswith("+00:00")
+    assert coordinator.recovery_attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_offline_diagnostics_report_error_and_throttled_retry(coordinator_module, monkeypatch):
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    coordinator.client.reachable_ports = set()
+    calls = [100]
+    monkeypatch.setattr(module, "monotonic", lambda: calls[0])
+
+    async def stale(*args, **kwargs):
+        return OLD
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", stale)
+    with pytest.raises(module.UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.recovery_attempts == 1
+    assert coordinator.last_connection_error == "ConnectionRefusedError"
+    assert coordinator.last_successful_contact is None
+    calls[0] += 5
+    with pytest.raises(module.UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.recovery_attempts == 1  # avoid repeated DNS storms
+    calls[0] += 20
+    with pytest.raises(module.UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.recovery_attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_same_port_bonjour_reannounce_refreshes_offline_entity(coordinator_module, monkeypatch):
+    """Foregrounding with an unchanged port should still wake an offline entity."""
+    module, _ = coordinator_module
+    coordinator = make_coordinator(module)
+    coordinator.last_update_success = False
+    coordinator.client.reachable_ports = {OLD[1]}
+
+    async def original_service(_hass, _name, _host, *, fresh):
+        return OLD
+
+    monkeypatch.setattr(module, "async_resolve_endpoint", original_service)
+    refreshes = []
+
+    async def refresh():
+        refreshes.append(True)
+
+    coordinator.async_request_refresh = refresh
+    coordinator._bonjour_pending.add(SERVICE)
+    await coordinator._async_apply_bonjour_update()
+    assert coordinator.client.endpoint == OLD
+    assert coordinator._service_name == SERVICE
+    assert refreshes == [True]
+    assert coordinator.last_resolution == "bonjour_event"

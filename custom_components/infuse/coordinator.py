@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from time import monotonic
 
@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import InfuseClient
 from .discovery import SERVICE_TYPE, async_resolve_endpoint
-from .unicast_discovery import async_resolve_unicast
+from .unicast_discovery import async_discover_unicast_services, async_resolve_unicast
 from .const import (
     CONF_DISCOVERY_NAME, CONF_LANGUAGE, CONF_TMDB_TOKEN, DEFAULT_LANGUAGE, DOMAIN,
     EVENT_MEDIA_CHANGED, EVENT_PLAYBACK_IDLE, EVENT_PLAYBACK_PAUSED,
@@ -51,9 +51,16 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         self._last_rediscovery = float("-inf")
         self._bonjour_browser: AsyncServiceBrowser | None = None
         self._bonjour_task = None
+        self._bonjour_pending: set[str] = set()
+        # Bonjour can re-register a different instance name when Infuse resumes.
+        # Keep the last validated name without modifying the HA config entry.
+        self._service_name: str | None = entry.data.get(CONF_DISCOVERY_NAME)
         self._unloading = False
         self.endpoint_changes = 0
         self.last_resolution = "not_attempted"
+        self.recovery_attempts = 0
+        self.last_connection_error: str | None = None
+        self.last_successful_contact: str | None = None
 
     def _update_endpoint(self, endpoint: tuple[str, int]) -> bool:
         """Use the new Bonjour endpoint without resetting the HA device."""
@@ -66,9 +73,7 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         return True
 
     async def async_start_bonjour_updates(self) -> None:
-        """Listen to port changes on Home Assistant's shared mDNS instance."""
-        if not self.entry.data.get(CONF_DISCOVERY_NAME):
-            return
+        """Track Infuse after foregrounding, including manually added devices."""
         try:
             aiozc = await ha_zeroconf.async_get_async_instance(self.hass)
             self._bonjour_browser = AsyncServiceBrowser(
@@ -82,32 +87,52 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         """Browser callbacks run in the HA event loop, never in an HTTP poll."""
         if self._unloading or state_change is ServiceStateChange.Removed:
             return
-        if name.casefold() != self.entry.data.get(CONF_DISCOVERY_NAME, "").casefold():
-            return
+        # A resumed app may advertise a new instance name. Resolve only
+        # _infuse-np services, and require the original host for renamed ones.
+        self._bonjour_pending.add(name)
         if self._bonjour_task is None or self._bonjour_task.done():
             self._bonjour_task = self.hass.async_create_task(self._async_apply_bonjour_update())
 
     async def _async_apply_bonjour_update(self) -> None:
-        """Proactively follow a new port and immediately refresh HA entities."""
-        endpoint = await async_resolve_endpoint(
-            self.hass,
-            self.entry.data[CONF_DISCOVERY_NAME],
-            self.client.endpoint[0],
-            fresh=False,
-        )
-        if endpoint is None or endpoint == self.client.endpoint or self._unloading:
-            return
-        # The HA mDNS cache can deliver a late, stale SRV event even after
-        # unicast recovery. Validate the candidate before replacing a working
-        # endpoint; never let an outdated cache event break reconnection.
-        try:
-            await InfuseClient(self.session, *endpoint).get_now_playing()
-        except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
-            _LOGGER.debug("Ignoring unreachable Infuse Bonjour update on port %s", endpoint[1])
-            return
-        if self._update_endpoint(endpoint) and not self._unloading:
-            self.last_resolution = "bonjour_event"
-            await self.async_request_refresh()
+        """Validate new Bonjour announcements before refreshing HA entities.
+
+        Drain pending names instead of dropping notifications arriving while a
+        slow DNS resolution or HTTP validation is in progress.
+        """
+        names = self._bonjour_pending or ({self._service_name} if self._service_name else set())
+        self._bonjour_pending = set()
+        while names and not self._unloading:
+            for name in sorted(names):
+                if self._unloading:
+                    return
+                endpoint = await async_resolve_endpoint(
+                    self.hass, name, self.client.endpoint[0], fresh=False,
+                )
+                if endpoint is None:
+                    continue
+                # Exact service name may legitimately move to a new IP.
+                # A renamed service may only be associated if its IP matches
+                # the device that was already configured by the user.
+                same_service = bool(
+                    self._service_name and name.casefold() == self._service_name.casefold()
+                )
+                if not same_service and endpoint[0] != self.client.endpoint[0]:
+                    continue
+                if endpoint == self.client.endpoint and same_service and self.last_update_success:
+                    continue
+                try:
+                    await InfuseClient(self.session, *endpoint).get_now_playing()
+                except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
+                    _LOGGER.debug("Ignoring unreachable Infuse Bonjour service %s", name)
+                    continue
+                changed = self._update_endpoint(endpoint)
+                self._service_name = name
+                if not self._unloading:
+                    self.last_resolution = "bonjour_event"
+                    if changed or not self.last_update_success:
+                        await self.async_request_refresh()
+            names = self._bonjour_pending
+            self._bonjour_pending = set()
 
     def async_stop_bonjour_updates(self) -> None:
         """Dispose of the subscription when the config entry is unloaded."""
@@ -119,42 +144,64 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
             self._bonjour_browser = None
             self.hass.async_create_task(browser.async_cancel())
 
+    async def _async_probe_endpoint(
+        self, endpoint: tuple[str, int] | None, resolution: str,
+        tried: set[tuple[str, int]],
+    ) -> Playback | None:
+        """Probe candidate independently; never replace a working endpoint with a stale one."""
+        if endpoint is None or endpoint in tried:
+            return None
+        tried.add(endpoint)
+        try:
+            playback = await InfuseClient(self.session, *endpoint).get_now_playing()
+        except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
+            return None
+        self._update_endpoint(endpoint)
+        self.last_resolution = resolution
+        return playback
+
     async def _async_recover(self, original_error: Exception) -> Playback:
-        """Try HA's shared mDNS cache, then a fresh query if it was stale."""
-        service = self.entry.data.get(CONF_DISCOVERY_NAME)
-        if not service or monotonic() - self._last_rediscovery < 15:
+        """Follow fresh Infuse registrations after background/foreground cycles.
+
+        Start with HA cached/fresh Bonjour, then the paired host's unicast SRV.
+        Finally ask that same host for PTR records in case the DNS-SD instance
+        was renamed or this entry was originally configured by hand.
+        """
+        if monotonic() - self._last_rediscovery < 15:
             raise UpdateFailed(
                 f"Unable to contact Infuse Now Playing API: {type(original_error).__name__}"
             ) from original_error
         self._last_rediscovery = monotonic()
-        # The managed resolver receives the same updates that the HA discovery
-        # integration sees. A standalone resolver remains a fallback when that
-        # cache is stale after an Apple TV restart.
+        self.recovery_attempts += 1
         tried: set[tuple[str, int]] = {self.client.endpoint}
-        for fresh in (False, True):
-            endpoint = await async_resolve_endpoint(
-                self.hass, service, self.client.endpoint[0], fresh=fresh,
-            )
-            if endpoint is None or endpoint in tried:
-                continue
-            tried.add(endpoint)
-            self._update_endpoint(endpoint)
-            self.last_resolution = "fresh" if fresh else "home_assistant"
-            try:
-                return await self.client.get_now_playing()
-            except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
-                continue
-        # Some HAOS VMs receive no fresh multicast announcements after tvOS
-        # restarts Infuse. Ask the *already paired* Apple TV directly for its
-        # SRV record as a last resort. No port sweep or subnet discovery.
-        endpoint = await async_resolve_unicast(service, self.client.endpoint[0])
-        if endpoint and endpoint not in tried:
-            self._update_endpoint(endpoint)
-            self.last_resolution = "direct_unicast"
-            try:
-                return await self.client.get_now_playing()
-            except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse):
-                pass
+        host = self.client.endpoint[0]
+        service = self._service_name
+        if service:
+            for fresh in (False, True):
+                endpoint = await async_resolve_endpoint(self.hass, service, host, fresh=fresh)
+                playback = await self._async_probe_endpoint(
+                    endpoint, "fresh" if fresh else "home_assistant", tried,
+                )
+                if playback is not None:
+                    return playback
+            # A direct SRV query also works on HAOS installations that miss
+            # multicast responses after Infuse changes its ephemeral port.
+            endpoint = await async_resolve_unicast(service, host)
+            playback = await self._async_probe_endpoint(endpoint, "direct_unicast", tried)
+            if playback is not None:
+                return playback
+
+        # Ask *only the already paired device* if it now publishes an Infuse
+        # service under another DNS-SD name. This also supports manual setup,
+        # where there was never an original service name to resolve.
+        for name in await async_discover_unicast_services(host):
+            if self._unloading:
+                break
+            endpoint = await async_resolve_unicast(name, host)
+            playback = await self._async_probe_endpoint(endpoint, "direct_ptr_unicast", tried)
+            if playback is not None:
+                self._service_name = name
+                return playback
         self.last_resolution = "no_reachable_new_endpoint"
         raise UpdateFailed(
             f"Unable to contact Infuse Now Playing API: {type(original_error).__name__}"
@@ -165,7 +212,15 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         try:
             current = await self.client.get_now_playing()
         except (aiohttp.ClientError, TimeoutError, OSError, ValueError, InfuseInvalidResponse) as exc:
+            self.last_connection_error = type(exc).__name__
             current = await self._async_recover(exc)
+        else:
+            # A listener can return on the original port without a new Bonjour
+            # announcement after Infuse is foregrounded again.
+            if self.last_connection_error is not None:
+                self.last_resolution = "original_port_recovered"
+        self.last_connection_error = None
+        self.last_successful_contact = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         item = current.item
         token: str = self.entry.options.get(CONF_TMDB_TOKEN, "")

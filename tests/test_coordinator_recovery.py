@@ -76,6 +76,16 @@ async def test_coordinator_recovers_from_new_bonjour_port(monkeypatch):
 
     monkeypatch.setattr(coordinator_module, "async_resolve_endpoint", resolve)
     client = Client()
+
+    class Candidate:
+        def __init__(self, session, host, port):
+            self.endpoint = (host, port)
+
+        async def get_now_playing(self):
+            client.calls.append(self.endpoint)
+            return model.Playback(state="idle", position=None, duration=None, item=None)
+
+    monkeypatch.setattr(coordinator_module, "InfuseClient", Candidate)
     entry = SimpleNamespace(
         entry_id="test_entry",
         title="Apple TV Infuse Player",
