@@ -86,7 +86,10 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 TextSelectorConfig(type=TextSelectorType.PASSWORD)
             ),
         })
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="user", data_schema=schema, errors=errors,
+            description_placeholders={"tmdb_api_url": "https://www.themoviedb.org/settings/api"},
+        )
 
     async def async_step_zeroconf(self, discovery_info) -> FlowResult:
         """Auto-discover service; port is ephemeral and must come from the SRV record."""
@@ -144,6 +147,7 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "name": self._discovered[CONF_NAME],
                 "host": self._discovered[CONF_HOST],
                 "port": str(self._discovered[CONF_PORT]),
+                "tmdb_api_url": "https://www.themoviedb.org/settings/api",
             },
         )
 
@@ -186,5 +190,6 @@ class InfuseOptionsFlow(config_entries.OptionsFlow):
             data_schema=schema,
             description_placeholders={
                 "tmdb_status": "✓" if bool(options.get(CONF_TMDB_TOKEN)) else "✗",
+                "tmdb_api_url": "https://www.themoviedb.org/settings/api",
             },
         )

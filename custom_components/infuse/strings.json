@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to Infuse",
-        "description": "Enable Now Playing API in Infuse > Settings > Playback. For **posters**, you can optionally enter a **TMDB API Read Access Token** below. Playback metadata works locally without a token. You can also add the token later in Configure. [Get a TMDB token](https://www.themoviedb.org/settings/api).",
+        "description": "Enable Now Playing API in Infuse > Settings > Playback. For **posters**, you can optionally enter a **TMDB API Read Access Token** below. Playback metadata works locally without a token. You can also add the token later in Configure. [Get a TMDB token]({tmdb_api_url}).",
         "data": {
           "host": "Host or local IP address",
           "port": "Now Playing API port",
@@ -14,7 +14,7 @@
       },
       "confirm": {
         "title": "Add {name}?",
-        "description": "Use the discovered local Infuse Now Playing API for {name} at {host}:{port}. For **posters**, optionally enter a **TMDB API Read Access Token** if one has not been added for this device. Playback metadata works without it; you can add it later. [Get a TMDB token](https://www.themoviedb.org/settings/api).",
+        "description": "Use the discovered local Infuse Now Playing API for {name} at {host}:{port}. For **posters**, optionally enter a **TMDB API Read Access Token** if one has not been added for this device. Playback metadata works without it; you can add it later. [Get a TMDB token]({tmdb_api_url}).",
         "data": {
           "tmdb_token": "TMDB API Read Access Token for posters (optional)"
         }
@@ -35,7 +35,7 @@
     "step": {
       "init": {
         "title": "Infuse settings",
-        "description": "TMDB token saved: **{tmdb_status}** (✓ = saved, ✗ = not saved). The token field stays blank for security, even when one is stored. Leave it blank to **keep** the existing token. To change it, paste a new API Read Access Token; to delete it, select “Remove stored TMDB token”. Posters are optional. [Get a TMDB token](https://www.themoviedb.org/settings/api).",
+        "description": "TMDB token saved: **{tmdb_status}** (✓ = saved, ✗ = not saved). The token field stays blank for security, even when one is stored. Leave it blank to **keep** the existing token. To change it, paste a new API Read Access Token; to delete it, select “Remove stored TMDB token”. Posters are optional. [Get a TMDB token]({tmdb_api_url}).",
         "data": {
           "poll_interval": "Poll interval (seconds)",
           "language": "Poster metadata language",

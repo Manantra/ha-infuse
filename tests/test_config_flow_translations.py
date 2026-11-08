@@ -31,7 +31,7 @@ def test_discovery_confirmation_passes_translation_values() -> None:
     call = _confirm_form_call()
     placeholders = next(k.value for k in call.keywords if k.arg == 'description_placeholders')
     assert isinstance(placeholders, ast.Dict)
-    assert {k.value for k in placeholders.keys} == {'name', 'host', 'port'}
+    assert {k.value for k in placeholders.keys} == {'name', 'host', 'port', 'tmdb_api_url'}
     values = {k.value: ast.unparse(v) for k, v in zip(placeholders.keys, placeholders.values)}
     assert 'self._discovered[CONF_NAME]' in values['name']
     assert 'self._discovered[CONF_HOST]' in values['host']
@@ -45,6 +45,6 @@ def test_all_translations_receive_placeholders() -> None:
         confirm = data['config']['step']['confirm']
         for key in ('title', 'description'):
             placeholders = {name for _, name, _, _ in Formatter().parse(confirm[key]) if name}
-            assert placeholders <= {'name', 'host', 'port'}, (relpath, key, placeholders)
+            assert placeholders <= {'name', 'host', 'port', 'tmdb_api_url'}, (relpath, key, placeholders)
         assert '{name}' in confirm['title']
         assert '{host}:{port}' in confirm['description']

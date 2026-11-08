@@ -24,3 +24,18 @@ def test_different_repository_for_card_plugin():
     assert 'marketplace_repository/?owner=Manantra&repository=ha-infuse' in readme
     assert (ROOT / 'examples/www/infuse-now-playing-card.js').is_file()
     assert (ROOT / 'examples/www/infuse-household-card.js').is_file()
+
+
+def test_hassfest_friendly_translation_links_use_placeholders():
+    for rel in ('strings.json', 'translations/en.json', 'translations/de.json'):
+        data = json.loads((ROOT / 'custom_components/infuse' / rel).read_text())
+        for namespace in ('config', 'options'):
+            for step in data[namespace]['step'].values():
+                assert 'https://' not in step.get('description', '')
+                if '{tmdb_api_url}' in step.get('description', ''):
+                    assert 'TMDB' in step['description']
+
+
+def test_hassfest_friendly_config_entry_only_schema():
+    init = (ROOT / 'custom_components/infuse/__init__.py').read_text()
+    assert 'CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)' in init

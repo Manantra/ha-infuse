@@ -24,6 +24,8 @@ from .coordinator import InfuseCoordinator
 from .links import library_link, stream_link
 
 PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.BINARY_SENSOR]
+# Config-entry-only integration; no legacy YAML configuration is accepted.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LIBRARY_SERVICE_SCHEMA = vol.Schema(
     {

@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Mit Infuse verbinden",
-        "description": "Aktiviere die Now Playing API in Infuse unter Einstellungen > Wiedergabe. Für **Cover** kannst du unten optional einen **TMDB API Read Access Token** angeben. Ohne Token funktionieren alle lokalen Wiedergabeinformationen. Den Token kannst du auch später unter „Konfigurieren“ hinzufügen. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
+        "description": "Aktiviere die Now Playing API in Infuse unter Einstellungen > Wiedergabe. Für **Cover** kannst du unten optional einen **TMDB API Read Access Token** angeben. Ohne Token funktionieren alle lokalen Wiedergabeinformationen. Den Token kannst du auch später unter „Konfigurieren“ hinzufügen. [TMDB-Token anfordern]({tmdb_api_url}).",
         "data": {
           "host": "Hostname oder lokale IP-Adresse",
           "port": "Port der Now Playing API",
@@ -14,7 +14,7 @@
       },
       "confirm": {
         "title": "{name} hinzufügen?",
-        "description": "Die lokal erkannte Infuse Now Playing API für {name} unter {host}:{port} verwenden. Für **Cover** kannst du optional einen **TMDB API Read Access Token** eintragen, sofern für dieses Gerät noch keiner hinterlegt ist. Ohne Token funktionieren Titel und Wiedergabestatus; den Token kannst du später hinzufügen. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
+        "description": "Die lokal erkannte Infuse Now Playing API für {name} unter {host}:{port} verwenden. Für **Cover** kannst du optional einen **TMDB API Read Access Token** eintragen, sofern für dieses Gerät noch keiner hinterlegt ist. Ohne Token funktionieren Titel und Wiedergabestatus; den Token kannst du später hinzufügen. [TMDB-Token anfordern]({tmdb_api_url}).",
         "data": {
           "tmdb_token": "TMDB API Read Access Token für Cover (optional)"
         }
@@ -35,7 +35,7 @@
     "step": {
       "init": {
         "title": "Infuse-Einstellungen",
-        "description": "TMDB-Token gespeichert: **{tmdb_status}** (✓ = gespeichert, ✗ = nicht gespeichert). Das Tokenfeld bleibt aus Sicherheitsgründen **immer leer**, auch wenn ein Token hinterlegt ist. Ein leeres Feld **behält** den vorhandenen Token. Zum Ersetzen einen neuen API Read Access Token eingeben, zum Entfernen die Option „Gespeicherten TMDB-Token entfernen“ auswählen. Cover sind optional. [TMDB-Token anfordern](https://www.themoviedb.org/settings/api).",
+        "description": "TMDB-Token gespeichert: **{tmdb_status}** (✓ = gespeichert, ✗ = nicht gespeichert). Das Tokenfeld bleibt aus Sicherheitsgründen **immer leer**, auch wenn ein Token hinterlegt ist. Ein leeres Feld **behält** den vorhandenen Token. Zum Ersetzen einen neuen API Read Access Token eingeben, zum Entfernen die Option „Gespeicherten TMDB-Token entfernen“ auswählen. Cover sind optional. [TMDB-Token anfordern]({tmdb_api_url}).",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "language": "Sprache der Cover-Metadaten",
