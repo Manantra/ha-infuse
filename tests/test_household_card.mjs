@@ -216,3 +216,29 @@ test('existing household playback rendering is unchanged',()=>{
   assert.match(html,/Externes Profil: Gast/);
   assert.match(html,/Keine Wiedergabe/);
 });
+
+test('profile sensor has accessible help in German for every device',()=>{
+  const e=editor([A,B]);
+  const html=e.shadowRoot.innerHTML;
+  assert.equal((html.match(/<details class="profile-help">/g)||[]).length,2);
+  assert.equal((html.match(/<summary aria-label="Hilfe zum externen Profilsensor"/g)||[]).length,2);
+  assert.match(html,/Was bedeutet das\?/);
+  assert.match(html,/Die Infuse Now Playing API liefert das aktive Profil nicht selbst/);
+  assert.match(html,/Apple-TV-Benutzer ist nicht zwingend dasselbe wie ein Infuse-Profil/);
+  assert.match(html,/profile-help\[open\] \.profile-help-tooltip/);
+  assert.match(html,/profile-help:hover \.profile-help-tooltip/);
+  assert.match(html,/profile-help:focus-within \.profile-help-tooltip/);
+  assert.match(html,/<div class="profile-help-tooltip" role="note">/);
+});
+
+test('profile sensor help is localized to English and is optional',()=>{
+  const e=editor([A]);
+  e.hass={language:'en',states:{}};
+  const html=e.shadowRoot.innerHTML;
+  assert.match(html,/Help for external profile sensor/);
+  assert.match(html,/External profile sensor \(optional\)/);
+  assert.match(html,/Leave this empty if you do not have such a sensor/);
+  assert.match(html,/An Apple TV user is not necessarily the same as an Infuse profile/);
+  assert.equal(getPicker(e,'profile').value,'');
+  assert.equal(e.events,undefined);
+});
