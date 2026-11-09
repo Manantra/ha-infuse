@@ -204,3 +204,71 @@ async def test_artwork_does_not_resurrect_unavailable_entity(coordinator_module,
     await task
     assert applied == []
     assert ("movie", "101", "de-DE") in coordinator._artwork_cache
+
+
+@pytest.mark.asyncio
+async def test_eager_completed_tasks_never_exhaust_tmdb_slots(coordinator_module, monkeypatch):
+    """Copilot #4516937685: eager tasks may finish before task registration."""
+    module, _ = coordinator_module
+    client = MediaClient("bad-0")
+    coordinator, _, _ = setup_artwork_coordinator(module, client)
+    calls = []
+    ticks = [100.0]
+    monkeypatch.setattr(module, "monotonic", lambda: ticks[0])
+
+    async def immediate_failure(_session, _token, item, _language):
+        calls.append(item.tmdb_id)
+        return None  # No suspension: HA can eagerly finish this coroutine.
+
+    monkeypatch.setattr(module, "fetch_tmdb_artwork", immediate_failure)
+    coordinator.hass.async_create_task = lambda coro: asyncio.Task(coro, loop=asyncio.get_running_loop(), eager_start=True)
+
+    for n in range(8):
+        client.now = media(f"bad-{n}")
+        coordinator.data = await coordinator._async_update_data()
+        assert coordinator._artwork_tasks == {}
+    assert calls == [f"bad-{n}" for n in range(8)]
+    assert len(coordinator._artwork_cache) == 8
+
+    # The cached negative result must be retryable after its TTL expires.
+    ticks[0] += 301
+    client.now = media("bad-0")
+    coordinator.data = await coordinator._async_update_data()
+    assert calls.count("bad-0") == 2
+    assert coordinator._artwork_tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_eager_immediately_raising_lookup_does_not_poison_task_registry(coordinator_module, monkeypatch):
+    module, _ = coordinator_module
+    client = MediaClient("not-decimal")
+    coordinator, _, _ = setup_artwork_coordinator(module, client)
+    errors = []
+
+    async def immediate_error(_session, _token, _item, _language):
+        raise aiohttp.ClientError("TMDB rejected ID")
+
+    monkeypatch.setattr(module, "fetch_tmdb_artwork", immediate_error)
+    coordinator.hass.async_create_task = lambda coro: asyncio.Task(coro, loop=asyncio.get_running_loop(), eager_start=True)
+    for n in range(6):
+        client.now = media(f"not-decimal-{n}")
+        coordinator.data = await coordinator._async_update_data()
+        assert not coordinator._artwork_tasks
+    assert len(coordinator._artwork_cache) == 6
+
+
+@pytest.mark.asyncio
+async def test_completed_callback_cannot_delete_a_newer_lookup(coordinator_module):
+    module, _ = coordinator_module
+    coordinator, _, _ = setup_artwork_coordinator(module)
+    key = ("movie", "101", "de-DE")
+    loop = asyncio.get_running_loop()
+    old_task = loop.create_future()
+    new_task = loop.create_future()
+    coordinator._artwork_tasks[key] = new_task
+    coordinator._remove_artwork_task(key, old_task)
+    assert coordinator._artwork_tasks[key] is new_task
+    coordinator._remove_artwork_task(key, new_task)
+    assert key not in coordinator._artwork_tasks
+    old_task.cancel()
+    new_task.cancel()

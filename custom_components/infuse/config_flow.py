@@ -159,6 +159,30 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
+    def _reconfigure_endpoint_in_use(self, entry_id: str, host: str, port: int) -> bool:
+        """Reject a device claimed by another entry, including a recovered port.
+
+        Bonjour recovery updates the live client's endpoint independently of
+        its saved config entry. Check both to avoid binding two entries to one
+        Infuse player after a port change.
+        """
+        normalized_host = host.casefold()
+        if any(
+            current.entry_id != entry_id
+            and current.data.get(CONF_HOST, "").casefold() == normalized_host
+            and current.data.get(CONF_PORT) == port
+            for current in self._async_current_entries()
+        ):
+            return True
+        loaded = getattr(self.hass, "data", {}).get(DOMAIN, {})
+        return any(
+            other_id != entry_id
+            and (endpoint := coordinator.client.endpoint)
+            and endpoint[0].casefold() == normalized_host
+            and endpoint[1] == port
+            for other_id, coordinator in loaded.items()
+        )
+
     async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
         """Update a validated endpoint without replacing the config entry/entities.
 
@@ -174,17 +198,16 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             port = user_input[CONF_PORT]
             if not host or "/" in host or "://" in host:
                 errors["base"] = "invalid_host"
-            elif any(
-                current.entry_id != entry.entry_id
-                and current.data.get(CONF_HOST, "").lower() == host.lower()
-                and current.data.get(CONF_PORT) == port
-                for current in self._async_current_entries()
-            ):
+            elif self._reconfigure_endpoint_in_use(entry.entry_id, host, port):
                 errors["base"] = "already_configured"
             else:
                 error = await self._test_connection(host, port)
                 if error:
                     errors["base"] = error
+                elif self._reconfigure_endpoint_in_use(entry.entry_id, host, port):
+                    # Discovery may rebind another coordinator while awaiting
+                    # the network validation. Check again before persisting.
+                    errors["base"] = "already_configured"
                 else:
                     if entry.unique_id is not None:
                         await self.async_set_unique_id(entry.unique_id)

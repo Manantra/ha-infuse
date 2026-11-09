@@ -252,11 +252,26 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
                     task = self.hass.async_create_task(
                         self._async_fetch_artwork(cache_key, item, token, language)
                     )
-                    self._artwork_tasks[cache_key] = task
+                    # HA may run tasks eagerly. A coroutine that completes
+                    # without suspending (e.g. invalid TMDB ID) already ran
+                    # its cache update before async_create_task returned.
+                    # Never register that completed task as pending.
+                    if not task.done():
+                        self._artwork_tasks[cache_key] = task
+                        task.add_done_callback(
+                            lambda finished, key=cache_key: self._remove_artwork_task(key, finished)
+                        )
 
         if previous is not None:
             self._emit_events(previous, current)
         return current
+
+    def _remove_artwork_task(
+        self, cache_key: tuple[str, str, str], finished: asyncio.Task[None],
+    ) -> None:
+        """Remove only the completed task, not any newer lookup for this ID."""
+        if self._artwork_tasks.get(cache_key) is finished:
+            self._artwork_tasks.pop(cache_key, None)
 
     async def _async_fetch_artwork(
         self, cache_key: tuple[str, str, str], item, token: str, language: str,
@@ -268,30 +283,27 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         or resurrect an unavailable coordinator. TMDB failures are optional.
         """
         try:
-            try:
-                artwork = await fetch_tmdb_artwork(self.session, token, item, language)
-            except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
-                _LOGGER.debug("Optional TMDB artwork lookup failed: %s", type(exc).__name__)
-                artwork = None
-            if self._unloading:
-                return
-            ttl = 12 * 3600 if artwork else 300
-            self._artwork_cache[cache_key] = (monotonic() + ttl, artwork)
-            self._artwork_cache.move_to_end(cache_key)
-            while len(self._artwork_cache) > _ARTWORK_CACHE_LIMIT:
-                self._artwork_cache.popitem(last=False)
-            snapshot = self.data
-            if (
-                artwork is not None
-                and self.last_update_success
-                and snapshot is not None
-                and snapshot.item is not None
-                and snapshot.item.identity == item.identity
-                and snapshot.artwork_url != artwork
-            ):
-                self.async_set_updated_data(replace(snapshot, artwork_url=artwork))
-        finally:
-            self._artwork_tasks.pop(cache_key, None)
+            artwork = await fetch_tmdb_artwork(self.session, token, item, language)
+        except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+            _LOGGER.debug("Optional TMDB artwork lookup failed: %s", type(exc).__name__)
+            artwork = None
+        if self._unloading:
+            return
+        ttl = 12 * 3600 if artwork else 300
+        self._artwork_cache[cache_key] = (monotonic() + ttl, artwork)
+        self._artwork_cache.move_to_end(cache_key)
+        while len(self._artwork_cache) > _ARTWORK_CACHE_LIMIT:
+            self._artwork_cache.popitem(last=False)
+        snapshot = self.data
+        if (
+            artwork is not None
+            and self.last_update_success
+            and snapshot is not None
+            and snapshot.item is not None
+            and snapshot.item.identity == item.identity
+            and snapshot.artwork_url != artwork
+        ):
+            self.async_set_updated_data(replace(snapshot, artwork_url=artwork))
 
     def _emit_events(self, previous: Playback, current: Playback) -> None:
         old_item = previous.item.identity if previous.item else None

@@ -30,7 +30,7 @@ def frontend_module(monkeypatch):
 
     async def get_integration(_hass, domain):
         assert domain == "infuse"
-        return SimpleNamespace(version="0.2.13")
+        return SimpleNamespace(version="0.2.14")
 
     loader.async_get_integration = get_integration
     for name, module in (
@@ -116,7 +116,7 @@ async def test_new_install_serves_integration_file_and_registers_versioned_modul
     assert Path(static.path, "infuse-dashboard-cards.js").is_file()
     assert resources.created == [{
         "id": "card-1", "type": "module",
-        "url": "/api/infuse/cards/infuse-dashboard-cards.js?v=0.2.13",
+        "url": "/api/infuse/cards/infuse-dashboard-cards.js?v=0.2.14",
     }]
 
 
@@ -142,7 +142,7 @@ async def test_update_existing_bundle_url_without_adding_resource(frontend_modul
     await frontend_module.async_register_dashboard_cards(hass)
     assert resources.created == []
     assert resources.updated == [("existing", {
-        "url": "/api/infuse/cards/infuse-dashboard-cards.js?v=0.2.13",
+        "url": "/api/infuse/cards/infuse-dashboard-cards.js?v=0.2.14",
         "res_type": "module",
     })]
     assert len(resources.current) == 1

@@ -17,7 +17,7 @@ async def test_diagnostics_distinguish_missing_api_from_moved_port(monkeypatch):
     core.HomeAssistant = object
     loader = ModuleType("homeassistant.loader")
     async def get_integration(_hass, _domain):
-        return SimpleNamespace(version="0.2.13")
+        return SimpleNamespace(version="0.2.14")
     loader.async_get_integration = get_integration
     for name,mod in (("homeassistant",ha),("homeassistant.config_entries",entries),("homeassistant.core",core),("homeassistant.loader",loader)):
         monkeypatch.setitem(sys.modules,name,mod)
@@ -41,7 +41,7 @@ async def test_diagnostics_distinguish_missing_api_from_moved_port(monkeypatch):
     )
     hass = SimpleNamespace(data={"infuse":{"test":coordinator}})
     result = await module.async_get_config_entry_diagnostics(hass,entry)
-    assert result["integration_version"]=="0.2.13"
+    assert result["integration_version"]=="0.2.14"
     assert result["connected"] is False
     assert result["artwork_cache_entries"] == 1
     assert result["pending_artwork_lookups"] == 0
