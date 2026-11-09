@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
 
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict:
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    integration = await async_get_integration(hass, DOMAIN)
     snapshot = coordinator.data
     return {
-        "integration_version": "0.2.12",
+        "integration_version": integration.version,
         "name": entry.title,
         "host": "[redacted]",
         "port": entry.data.get("port"),
@@ -33,5 +35,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "playback_state": snapshot.state if snapshot else None,
         "has_item": bool(snapshot and snapshot.item),
         "has_artwork": bool(snapshot and snapshot.artwork_url),
+        "artwork_cache_entries": len(coordinator._artwork_cache),
+        "pending_artwork_lookups": len(coordinator._artwork_tasks),
         "latency_ms": snapshot.latency_ms if snapshot else None,
     }

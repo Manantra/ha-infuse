@@ -1,0 +1,5 @@
+# Isolated smoke tests with real Home Assistant Core 2026.10.4 (Python 3.14).
+# Keep separate from the fast, dependency-light requirements-test.txt.
+pytest-homeassistant-custom-component==0.13.375
+# Home Assistant serves this frontend as an optional PyPI distribution.
+home-assistant-frontend==20261028.5

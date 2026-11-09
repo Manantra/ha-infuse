@@ -57,7 +57,7 @@ For setups with `lovelace: resource_mode: yaml`, automatic editing of `configura
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.12
+    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.13
       type: module
 ```
 
@@ -90,6 +90,16 @@ Keep using HACS on older Home Assistant versions. In HACS, **search for Infuse N
 Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart Home Assistant, then add **Infuse Now Playing** under **Settings → Devices & services**.
 
 The dashboard cards ship inside `custom_components/infuse/www/` and are registered on setup in resource storage mode. You no longer need to copy any card files into `<config>/www/` or manage a separate HACS cards package.
+
+### Reconfigure an existing Infuse device (v0.2.13+)
+
+If an Apple TV's host/IP address or manually entered Now Playing API port changes, open **Settings → Devices & services → Infuse Now Playing**, select the existing device and choose **Reconfigure** from its menu. Enter the current host and port while the Infuse app is open and **Now Playing API** is enabled. Home Assistant validates the new endpoint before saving. The existing config entry, entity IDs, dashboard cards, automations, polling options and stored TMDB token are preserved; no device deletion or re-pairing is needed.
+
+Reconfigure deliberately **does not** try to identify a different physical device: the read-only API exposes no stable hardware ID. Check the address and port carefully. To prevent unwanted reassociation, a manually changed host drops the previous Bonjour service-name binding; the integration can rediscover a valid Infuse service on the new configured device. Connection recovery still runs automatically, so **Reconfigure is normally unnecessary for routine port changes**.
+
+### Non-blocking TMDB posters (v0.2.13+)
+
+Playback status, sensor values and automation events are now updated **without waiting for optional TMDB poster lookups**. A missing cover may appear a few seconds later as the background lookup finishes. Poster results are applied only if the same media is still selected and the Infuse player is online; a late response cannot overwrite a different title or reactivate an unavailable device. Failed lookups are cached briefly to avoid repeated requests, the cache is bounded to 64 entries, and pending tasks are canceled on integration unload. Diagnostics show cache size and pending lookup counts (not tokens).
 
 ### Optional information tiles in the Infuse Now Playing dashboard card
 
@@ -175,7 +185,15 @@ The local API uses unencrypted, unauthenticated HTTP. Never expose the endpoint 
 
 ## Development and support
 
-The independent Python parser/client suite includes multi-device simulation, but live Infuse / Home Assistant validation remains required. Please report reproducible issues in [GitHub Issues](https://github.com/Manantra/ha-infuse/issues).
+Automated checks include **125+ dependency-light Python regression tests**, JavaScript card tests, HACS/hassfest, and a **separate smoke suite using real Home Assistant Core**. The HA smoke tests verify config-entry setup/unload, entity creation, offline startup, Lovelace resource registration and Reconfigure against HA's actual APIs, with only the remote Infuse HTTP endpoint mocked (no Apple TV required). CI runs this suite separately with Python 3.14 and pinned HA test dependencies in `requirements-test-ha.txt`:
+
+```bash
+uv venv --python 3.14 .venv-ha
+uv pip install --python .venv-ha/bin/python -r requirements-test-ha.txt
+.venv-ha/bin/python -m pytest tests_ha -q
+```
+
+Live Apple TV/Infuse validation is still important, especially across tvOS foreground/background transitions, HAOS virtual-machine networking and multiple simultaneous players; automated mocks cannot prove the upstream HTTP listener recovers. Please report reproducible issues in [GitHub Issues](https://github.com/Manantra/ha-infuse/issues).
 
 - [Firecore's third-party API documentation](https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services)
 - [Home Assistant integration developer documentation](https://developers.home-assistant.io/)

@@ -106,8 +106,16 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for current in self._async_current_entries()
         ):
             return self.async_abort(reason="already_configured")
-        await self.async_set_unique_id(f"service:{discovery_info.name.lower()}")
-        self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: port})
+        existing = await self.async_set_unique_id(f"service:{discovery_info.name.lower()}")
+        if existing is not None and not existing.data.get(CONF_DISCOVERY_NAME):
+            # A discovered entry may have been manually reconfigured to a new
+            # host. A late old mDNS broadcast must never overwrite that choice.
+            return self.async_abort(reason="already_configured")
+        # Our config entry update listener already schedules a reload. Asking
+        # HA to schedule another one is deprecated from Core 2026.12.
+        self._abort_if_unique_id_configured(
+            updates={CONF_HOST: host, CONF_PORT: port}, reload_on_update=False,
+        )
         self.context["title_placeholders"] = {"name": name}
         return await self.async_step_confirm()
 
@@ -150,6 +158,54 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "tmdb_api_url": "https://www.themoviedb.org/settings/api",
             },
         )
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
+        """Update a validated endpoint without replacing the config entry/entities.
+
+        Keep the existing unique ID: Infuse's read-only API has no stable
+        hardware identifier to derive a different one safely. On a manual
+        host change, clear the former Bonjour name so it cannot redirect the
+        entry back to a different Apple TV after DHCP changes.
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            host = user_input[CONF_HOST].strip()
+            port = user_input[CONF_PORT]
+            if not host or "/" in host or "://" in host:
+                errors["base"] = "invalid_host"
+            elif any(
+                current.entry_id != entry.entry_id
+                and current.data.get(CONF_HOST, "").lower() == host.lower()
+                and current.data.get(CONF_PORT) == port
+                for current in self._async_current_entries()
+            ):
+                errors["base"] = "already_configured"
+            else:
+                error = await self._test_connection(host, port)
+                if error:
+                    errors["base"] = error
+                else:
+                    if entry.unique_id is not None:
+                        await self.async_set_unique_id(entry.unique_id)
+                        self._abort_if_unique_id_mismatch()
+                    data = dict(entry.data)
+                    data.update({CONF_HOST: host, CONF_PORT: port})
+                    if host.casefold() != entry.data[CONF_HOST].casefold():
+                        data.pop(CONF_DISCOVERY_NAME, None)
+                    # async_update_and_abort notifies the existing update
+                    # listener which reloads the entry exactly once. Do not
+                    # also call async_update_reload_and_abort (HA 2026.12).
+                    return self.async_update_and_abort(entry, data=data)
+        schema = vol.Schema({
+            vol.Required(CONF_HOST, default=(user_input or {}).get(
+                CONF_HOST, entry.data[CONF_HOST],
+            )): cv.string,
+            vol.Required(CONF_PORT, default=(user_input or {}).get(
+                CONF_PORT, entry.data[CONF_PORT],
+            )): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+        })
+        return self.async_show_form(step_id="reconfigure", data_schema=schema, errors=errors)
 
     @staticmethod
     @callback
