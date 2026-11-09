@@ -38,8 +38,20 @@ def flow_module(monkeypatch):
         def _async_current_entries(self):
             return []
 
-        async def async_set_unique_id(self, _unique_id):
+        async def async_set_unique_id(self, unique_id):
+            self._set_unique_id = unique_id
             return None
+
+        def _get_reconfigure_entry(self):
+            return self._test_reconfigure_entry
+
+        def _abort_if_unique_id_mismatch(self):
+            self._unique_id_checked = True
+
+        def async_update_and_abort(self, entry, *, data):
+            self._updated_existing_entry = True
+            entry.data = data
+            return {"type": "abort", "reason": "reconfigure_successful", "data": data}
 
         def _abort_if_unique_id_configured(self, **_kwargs):
             return None
@@ -220,3 +232,155 @@ async def test_options_screen_indicates_when_no_token_exists(flow_module):
     options_flow.config_entry = SimpleNamespace(options={})
     form = await options_flow.async_step_init()
     assert form["description_placeholders"]["tmdb_status"] == "✗"
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_uses_existing_entry_without_resetting_identity_or_options(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="the-same-device", unique_id="manual:192.168.1.2:59001",
+        data={"host": "192.168.1.2", "port": 59001, "extra_setting": "preserved"},
+        options={"tmdb_token": "kept-private", "poll_interval": 10},
+    )
+    flow._test_reconfigure_entry = entry
+    form = await flow.async_step_reconfigure()
+    assert form["step_id"] == "reconfigure"
+    assert form["data_schema"]({})["host"] == "192.168.1.2"
+    assert form["data_schema"]({})["port"] == 59001
+
+    async def validates(host, port):
+        assert (host, port) == ("192.168.1.5", 59005)
+        return None
+
+    monkeypatch.setattr(flow, "_test_connection", validates)
+    response = await flow.async_step_reconfigure({"host": "192.168.1.5", "port": 59005})
+    assert response["reason"] == "reconfigure_successful"
+    assert flow._updated_existing_entry is True
+    assert flow._unique_id_checked is True
+    assert flow._set_unique_id == "manual:192.168.1.2:59001"
+    assert entry.data == {"host": "192.168.1.5", "port": 59005, "extra_setting": "preserved"}
+    assert entry.options["tmdb_token"] == "kept-private"
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_clears_stale_bonjour_name_on_host_change(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="original", unique_id="service:original._infuse-np._tcp.local.",
+        data={"host": "192.168.1.2", "port": 59001,
+              "discovery_name": "original._infuse-np._tcp.local."}, options={},
+    )
+    flow._test_reconfigure_entry = entry
+
+    async def success(*_):
+        return None
+    monkeypatch.setattr(flow, "_test_connection", success)
+    response = await flow.async_step_reconfigure({"host": "192.168.1.3", "port": 59003})
+    assert response["type"] == "abort"
+    assert "discovery_name" not in entry.data
+    assert entry.unique_id == "service:original._infuse-np._tcp.local."
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_preserves_bonjour_name_for_same_host_new_port(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="original", unique_id="service:original._infuse-np._tcp.local.",
+        data={"host": "192.168.1.2", "port": 59001,
+              "discovery_name": "original._infuse-np._tcp.local."}, options={},
+    )
+    flow._test_reconfigure_entry = entry
+
+    async def success(*_):
+        return None
+    monkeypatch.setattr(flow, "_test_connection", success)
+    await flow.async_step_reconfigure({"host": "192.168.1.2", "port": 59010})
+    assert entry.data["discovery_name"] == "original._infuse-np._tcp.local."
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_refuses_other_entries_and_unreachable_target(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(entry_id="one", unique_id="manual:1", data={"host": "one", "port": 1234}, options={})
+    flow._test_reconfigure_entry = entry
+    flow._async_current_entries = lambda: [entry, SimpleNamespace(
+        entry_id="two", data={"host": "other", "port": 5678},
+    )]
+    calls = []
+
+    async def validate(*args):
+        calls.append(args)
+        return "cannot_connect"
+
+    monkeypatch.setattr(flow, "_test_connection", validate)
+    duplicate = await flow.async_step_reconfigure({"host": "other", "port": 5678})
+    assert duplicate["errors"]["base"] == "already_configured"
+    assert calls == []
+    unreachable = await flow.async_step_reconfigure({"host": "test", "port": 5678})
+    assert unreachable["errors"]["base"] == "cannot_connect"
+    assert calls == [("test", 5678)]
+    invalid = await flow.async_step_reconfigure({"host": "http://example.com", "port": 5678})
+    assert invalid["errors"]["base"] == "invalid_host"
+    assert not hasattr(flow, "_updated_existing_entry")
+
+
+def test_reconfigure_translations_present_and_same_api_fields():
+    import json
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[1] / "custom_components/infuse"
+    for rel in ("strings.json", "translations/de.json", "translations/en.json"):
+        config = json.loads((base / rel).read_text())["config"]
+        assert set(config["step"]["reconfigure"]["data"]) == {"host", "port"}
+        assert config["error"]["already_configured"]
+
+
+@pytest.mark.asyncio
+async def test_old_bonjour_announcement_cannot_undo_manual_reconfigure(flow_module):
+    """Do not silently rebind a reconfigured entry back to the old Apple TV."""
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="existing", unique_id="service:original._infuse-np._tcp.local.",
+        data={"host": "192.168.1.3", "port": 59003},
+    )
+    called = []
+    async def existing_id(uid):
+        called.append(uid)
+        return entry
+    flow.async_set_unique_id = existing_id
+    flow._abort_if_unique_id_configured = lambda **kwargs: pytest.fail(
+        "Stale discovery must never update a manually reconfigured host"
+    )
+    result = await flow.async_step_zeroconf(SimpleNamespace(
+        host="192.168.1.2", port=59001,
+        name="Original._infuse-np._tcp.local.",
+    ))
+    assert result == {"type": "abort", "reason": "already_configured"}
+    assert entry.data == {"host": "192.168.1.3", "port": 59003}
+    assert called == ["service:original._infuse-np._tcp.local."]
+
+
+@pytest.mark.asyncio
+async def test_bonjour_discovery_no_longer_schedules_duplicate_reload(flow_module):
+    """HA's existing entry listener handles a single reload on endpoint update."""
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="existing", unique_id="service:original._infuse-np._tcp.local.",
+        data={"host": "192.168.1.2", "port": 59001,
+              "discovery_name": "Original._infuse-np._tcp.local."},
+    )
+    async def existing_id(uid):
+        return entry
+    flow.async_set_unique_id = existing_id
+    captured = {}
+    def abort_if_configured(**kwargs):
+        captured.update(kwargs)
+        # Real HA throws AbortFlow here when a configured entry exists.
+        raise RuntimeError("already_configured")
+    flow._abort_if_unique_id_configured = abort_if_configured
+    with pytest.raises(RuntimeError, match="already_configured"):
+        await flow.async_step_zeroconf(SimpleNamespace(
+            host="192.168.1.2", port=59004,
+            name="Original._infuse-np._tcp.local.",
+        ))
+    assert captured["updates"] == {"host": "192.168.1.2", "port": 59004}
+    assert captured["reload_on_update"] is False

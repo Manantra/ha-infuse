@@ -15,7 +15,11 @@ async def test_diagnostics_distinguish_missing_api_from_moved_port(monkeypatch):
     entries.ConfigEntry = object
     core = ModuleType("homeassistant.core")
     core.HomeAssistant = object
-    for name,mod in (("homeassistant",ha),("homeassistant.config_entries",entries),("homeassistant.core",core)):
+    loader = ModuleType("homeassistant.loader")
+    async def get_integration(_hass, _domain):
+        return SimpleNamespace(version="0.2.13")
+    loader.async_get_integration = get_integration
+    for name,mod in (("homeassistant",ha),("homeassistant.config_entries",entries),("homeassistant.core",core),("homeassistant.loader",loader)):
         monkeypatch.setitem(sys.modules,name,mod)
     module_name = f"{PACKAGE_NAME}.diagnostics"
     sys.modules.pop(module_name,None)
@@ -32,11 +36,15 @@ async def test_diagnostics_distinguish_missing_api_from_moved_port(monkeypatch):
         _service_name="New._infuse-np._tcp.local.",
         update_interval=SimpleNamespace(total_seconds=lambda:5),
         last_update_success=False,
+        _artwork_cache={"cached": (1.0, "url")},
+        _artwork_tasks={},
     )
     hass = SimpleNamespace(data={"infuse":{"test":coordinator}})
     result = await module.async_get_config_entry_diagnostics(hass,entry)
-    assert result["integration_version"]=="0.2.12"
+    assert result["integration_version"]=="0.2.13"
     assert result["connected"] is False
+    assert result["artwork_cache_entries"] == 1
+    assert result["pending_artwork_lookups"] == 0
     assert result["recovery_attempts"]==19
     assert result["last_connection_error"]=="ClientConnectorError"
     assert result["last_bonjour_resolution"]=="no_reachable_new_endpoint"

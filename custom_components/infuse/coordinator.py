@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import logging
@@ -28,6 +30,8 @@ from .metadata import fetch_tmdb_artwork
 from .model import InfuseInvalidResponse, Playback
 
 _LOGGER = logging.getLogger(__name__)
+_ARTWORK_CACHE_LIMIT = 64
+_MAX_PENDING_ARTWORK = 4
 
 
 class InfuseCoordinator(DataUpdateCoordinator[Playback]):
@@ -47,7 +51,10 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         self.entry = entry
         self.client = client
         self.session = session
-        self._artwork_cache: dict[tuple[str, str, str], tuple[float, str | None]] = {}
+        self._artwork_cache: OrderedDict[
+            tuple[str, str, str], tuple[float, str | None]
+        ] = OrderedDict()
+        self._artwork_tasks: dict[tuple[str, str, str], asyncio.Task[None]] = {}
         self._last_rediscovery = float("-inf")
         self._bonjour_browser: AsyncServiceBrowser | None = None
         self._bonjour_task = None
@@ -139,6 +146,8 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         self._unloading = True
         if self._bonjour_task and not self._bonjour_task.done():
             self._bonjour_task.cancel()
+        for task in self._artwork_tasks.values():
+            task.cancel()
         if self._bonjour_browser is not None:
             browser = self._bonjour_browser
             self._bonjour_browser = None
@@ -222,28 +231,67 @@ class InfuseCoordinator(DataUpdateCoordinator[Playback]):
         self.last_connection_error = None
         self.last_successful_contact = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+        # Playback and automation events must not wait for optional TMDB HTTP.
+        # Cached covers are applied synchronously; misses run in background.
         item = current.item
         token: str = self.entry.options.get(CONF_TMDB_TOKEN, "")
         language: str = self.entry.options.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
         if item and token and item.tmdb_id:
             cache_key = (item.kind, item.tmdb_id, language)
             cached = self._artwork_cache.get(cache_key)
-            if cached and cached[0] > monotonic():
-                artwork = cached[1]
+            if cached is not None and cached[0] > monotonic():
+                self._artwork_cache.move_to_end(cache_key)
+                current = replace(current, artwork_url=cached[1])
             else:
-                try:
-                    artwork = await fetch_tmdb_artwork(self.session, token, item, language)
-                except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
-                    _LOGGER.debug("Optional TMDB artwork lookup failed: %s", type(exc).__name__)
-                    artwork = None
-                    self._artwork_cache[cache_key] = (monotonic() + 300, None)
-                else:
-                    self._artwork_cache[cache_key] = (monotonic() + 12 * 3600, artwork)
-            current = replace(current, artwork_url=artwork)
+                self._artwork_cache.pop(cache_key, None)
+                if (
+                    not self._unloading
+                    and cache_key not in self._artwork_tasks
+                    and len(self._artwork_tasks) < _MAX_PENDING_ARTWORK
+                ):
+                    task = self.hass.async_create_task(
+                        self._async_fetch_artwork(cache_key, item, token, language)
+                    )
+                    self._artwork_tasks[cache_key] = task
 
         if previous is not None:
             self._emit_events(previous, current)
         return current
+
+    async def _async_fetch_artwork(
+        self, cache_key: tuple[str, str, str], item, token: str, language: str,
+    ) -> None:
+        """Enrich only the still-current media; never block playback polling.
+
+        Pending lookups are bounded and canceled on unload. Stale results may
+        populate the small TTL cache, but cannot overwrite a different title
+        or resurrect an unavailable coordinator. TMDB failures are optional.
+        """
+        try:
+            try:
+                artwork = await fetch_tmdb_artwork(self.session, token, item, language)
+            except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+                _LOGGER.debug("Optional TMDB artwork lookup failed: %s", type(exc).__name__)
+                artwork = None
+            if self._unloading:
+                return
+            ttl = 12 * 3600 if artwork else 300
+            self._artwork_cache[cache_key] = (monotonic() + ttl, artwork)
+            self._artwork_cache.move_to_end(cache_key)
+            while len(self._artwork_cache) > _ARTWORK_CACHE_LIMIT:
+                self._artwork_cache.popitem(last=False)
+            snapshot = self.data
+            if (
+                artwork is not None
+                and self.last_update_success
+                and snapshot is not None
+                and snapshot.item is not None
+                and snapshot.item.identity == item.identity
+                and snapshot.artwork_url != artwork
+            ):
+                self.async_set_updated_data(replace(snapshot, artwork_url=artwork))
+        finally:
+            self._artwork_tasks.pop(cache_key, None)
 
     def _emit_events(self, previous: Playback, current: Playback) -> None:
         old_item = previous.item.identity if previous.item else None

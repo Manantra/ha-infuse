@@ -18,13 +18,22 @@
         "data": {
           "tmdb_token": "TMDB API Read Access Token für Cover (optional)"
         }
+      },
+      "reconfigure": {
+        "title": "Infuse-Verbindung ändern",
+        "description": "Host und aktuellen Port der Now Playing API ändern. Vor dem Speichern Infuse öffnen und die API aktivieren; Home Assistant prüft den neuen Endpunkt. Bestehende Entitäten, Dashboards und TMDB-Einstellungen bleiben erhalten.",
+        "data": {
+          "host": "Hostname oder lokale IP-Adresse",
+          "port": "Port der Now Playing API"
+        }
       }
     },
     "error": {
       "cannot_connect": "Infuse nicht erreichbar. Prüfe App, Netzwerk und Port.",
       "invalid_response": "Keine gültige Infuse Now Playing API.",
       "invalid_host": "Hostname oder IP-Adresse statt URL eingeben.",
-      "unknown": "Unerwarteter Fehler. Prüfe die Protokolle."
+      "unknown": "Unerwarteter Fehler. Prüfe die Protokolle.",
+      "already_configured": "Dieser Endpunkt ist bereits eingerichtet."
     },
     "abort": {
       "already_configured": "Dieses Gerät ist bereits eingerichtet.",
