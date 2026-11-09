@@ -57,7 +57,7 @@ For setups with `lovelace: resource_mode: yaml`, automatic editing of `configura
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.13
+    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.14
       type: module
 ```
 
@@ -90,6 +90,15 @@ Keep using HACS on older Home Assistant versions. In HACS, **search for Infuse N
 Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart Home Assistant, then add **Infuse Now Playing** under **Settings → Devices & services**.
 
 The dashboard cards ship inside `custom_components/infuse/www/` and are registered on setup in resource storage mode. You no longer need to copy any card files into `<config>/www/` or manage a separate HACS cards package.
+
+### Safety fixes in v0.2.14
+
+This release addresses two issues found during Copilot review of v0.2.13:
+
+- **Avoid duplicate players after Bonjour recovery:** Reconfigure now checks the current **live endpoint** of other connected Infuse coordinators in addition to their stored host/port. If another device reconnects while the submitted endpoint is being tested, the duplicate check runs again before saving. This prevents two configurations from unintentionally tracking the same Apple TV after a dynamic port change.
+- **Reliable background TMDB lookups:** Home Assistant may finish a new background task *eagerly*, before the task-creation call returns. Completed tasks are no longer registered as pending; completion callbacks remove only the matching task. This prevents fast failures or invalid media IDs from consuming all available poster-lookup slots. Existing asynchronous cancellation and artwork cache behavior are retained.
+
+Both cases have dedicated regression tests, including eager task execution and real Home Assistant Core smoke coverage. No dashboard changes or manual migration are necessary.
 
 ### Reconfigure an existing Infuse device (v0.2.13+)
 

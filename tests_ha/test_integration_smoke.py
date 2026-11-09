@@ -1,6 +1,7 @@
 """Real HA smoke: integration setup and entity lifecycle with a mocked Infuse API."""
 
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
 import aiohttp
 import pytest
@@ -113,6 +114,18 @@ async def test_real_home_assistant_reconfigure_preserves_device_and_options(hass
         )
         assert form["type"] == "form"
         assert form["step_id"] == "reconfigure"
+        # A second entry can be recovered on a port not present in its
+        # persisted data. Reconfigure must reject its active HTTP endpoint.
+        hass.data["infuse"]["other-apple-tv"] = SimpleNamespace(
+            client=SimpleNamespace(endpoint=("127.0.0.1", 59801)),
+        )
+        duplicate = await hass.config_entries.flow.async_configure(
+            form["flow_id"], {"host": "127.0.0.1", "port": 59801},
+        )
+        assert duplicate["type"] == "form"
+        assert duplicate["errors"]["base"] == "already_configured"
+        assert entry.data["port"] == 59800
+        hass.data["infuse"].pop("other-apple-tv")
         result = await hass.config_entries.flow.async_configure(
             form["flow_id"], {"host": "127.0.0.1", "port": 59801},
         )
@@ -122,7 +135,7 @@ async def test_real_home_assistant_reconfigure_preserves_device_and_options(hass
         assert entry.data["port"] == 59801
         assert entry.options["tmdb_token"] == "private-token"
         diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-        assert diagnostics["integration_version"] == "0.2.13"
+        assert diagnostics["integration_version"] == "0.2.14"
         assert "private-token" not in str(diagnostics)
         after = {
             entity.entity_id for entity in registry.entities.values()
@@ -171,4 +184,45 @@ async def test_real_home_assistant_exposes_playback_before_tmdb_finishes(hass):
         await hass.async_block_till_done()
         snapshot = hass.data["infuse"][entry.entry_id].data
         assert snapshot.artwork_url.endswith("/real-ha.jpg")
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_real_home_assistant_immediate_artwork_lookup_does_not_block_future_lookups(hass):
+    """Eagerly completed tasks must not occupy one of the four lookup slots."""
+    from custom_components.infuse.model import InfuseItem
+
+    entry = MockConfigEntry(
+        domain="infuse", title="Eager Poster TV", unique_id="manual:127.0.0.1:59803",
+        data={"host": "127.0.0.1", "port": 59803},
+        options={"tmdb_token": "private-token"},
+    )
+    entry.add_to_hass(hass)
+    responses = AsyncMock(
+        return_value=Playback("playing", 10, 200,
+                              InfuseItem(kind="movie", tmdb_id="nondecimal-0", title="Demo 0")),
+    )
+
+    async def immediate_no_artwork(*_args, **_kwargs):
+        return None  # The coroutine never suspends.
+
+    with (
+        patch("custom_components.infuse.api.InfuseClient.get_now_playing", responses),
+        patch("custom_components.infuse.coordinator.InfuseCoordinator.async_start_bonjour_updates",
+              new_callable=AsyncMock),
+        patch("custom_components.infuse.coordinator.fetch_tmdb_artwork",
+              side_effect=immediate_no_artwork) as tmdb,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        coordinator = hass.data["infuse"][entry.entry_id]
+        for n in range(1, 7):
+            responses.return_value = Playback(
+                "playing", 10, 200,
+                InfuseItem(kind="movie", tmdb_id=f"nondecimal-{n}", title=f"Demo {n}"),
+            )
+            await coordinator.async_refresh()
+            await hass.async_block_till_done()
+            assert coordinator._artwork_tasks == {}
+        assert tmdb.call_count == 7  # Six extra media titles all fetched.
         assert await hass.config_entries.async_unload(entry.entry_id)

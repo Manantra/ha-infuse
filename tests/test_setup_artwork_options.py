@@ -384,3 +384,64 @@ async def test_bonjour_discovery_no_longer_schedules_duplicate_reload(flow_modul
         ))
     assert captured["updates"] == {"host": "192.168.1.2", "port": 59004}
     assert captured["reload_on_update"] is False
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_rejects_live_port_claimed_by_recovered_player(flow_module, monkeypatch):
+    """Copilot #4516937607: persisted old port may differ from active port."""
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="tv-a", unique_id="manual:192.168.1.4:59001",
+        data={"host": "192.168.1.4", "port": 59001}, options={"tmdb_token": "secret"},
+    )
+    other = SimpleNamespace(entry_id="tv-b", data={"host": "192.168.1.5", "port": 59002})
+    flow._test_reconfigure_entry = entry
+    flow._async_current_entries = lambda: [entry, other]
+    flow.hass = SimpleNamespace(data={"infuse": {
+        "tv-a": SimpleNamespace(client=SimpleNamespace(endpoint=("192.168.1.4", 59001))),
+        "tv-b": SimpleNamespace(client=SimpleNamespace(endpoint=("192.168.1.5", 59099))),
+    }})
+    calls = []
+
+    async def validate(host, port):
+        calls.append((host, port))
+        return None
+
+    monkeypatch.setattr(flow, "_test_connection", validate)
+    result = await flow.async_step_reconfigure({"host": "192.168.1.5", "port": 59099})
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "already_configured"
+    assert calls == []  # reject even before probing the duplicate endpoint
+    assert entry.data == {"host": "192.168.1.4", "port": 59001}
+    assert entry.options["tmdb_token"] == "secret"
+
+    # The selected device may be reconfigured to its *own* active endpoint.
+    result = await flow.async_step_reconfigure({"host": "192.168.1.4", "port": 59001})
+    assert result["type"] == "abort"
+    assert calls == [("192.168.1.4", 59001)]
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_checks_live_duplicates_after_async_probe(flow_module, monkeypatch):
+    """Another coordinator can change ports while the validation awaits HTTP."""
+    flow = flow_module.InfuseConfigFlow()
+    entry = SimpleNamespace(
+        entry_id="tv-a", unique_id="manual:192.168.1.4:59001",
+        data={"host": "192.168.1.4", "port": 59001}, options={},
+    )
+    other = SimpleNamespace(entry_id="tv-b", data={"host": "192.168.1.5", "port": 59002})
+    live_b = SimpleNamespace(client=SimpleNamespace(endpoint=("192.168.1.5", 59002)))
+    flow._test_reconfigure_entry = entry
+    flow._async_current_entries = lambda: [entry, other]
+    flow.hass = SimpleNamespace(data={"infuse": {"tv-b": live_b}})
+
+    async def validate(_host, _port):
+        # Simulate an automatic Bonjour recovery during the HTTP probe.
+        live_b.client.endpoint = ("192.168.1.5", 59099)
+        return None
+
+    monkeypatch.setattr(flow, "_test_connection", validate)
+    result = await flow.async_step_reconfigure({"host": "192.168.1.5", "port": 59099})
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "already_configured"
+    assert entry.data == {"host": "192.168.1.4", "port": 59001}
