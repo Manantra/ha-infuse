@@ -39,16 +39,19 @@ After installing the integration, edit a dashboard and add **Infuse Now Playing*
 
 ### Migrating from the former separate cards repository
 
-The older [`ha-infuse-cards`](https://github.com/Manantra/ha-infuse-cards) project is superseded by the bundled version, in accordance with HACS's review guidance. The integration **does not delete or modify resources controlled by HACS/Marketplace or manually registered resources**. To avoid two copies of the same cards being loaded in one browser session:
+The older [`ha-infuse-cards`](https://github.com/Manantra/ha-infuse-cards) package is superseded by the bundled version, in accordance with the HACS review guidance. **Existing users have a safe migration bridge**: the final separate cards **v0.1.4** release automatically imports the newer bundled JavaScript from this integration, with the original v0.1.3 card code as a fallback for outdated installations. No dashboard editing is needed, and **future card fixes and features then arrive whenever the Infuse integration is updated**, even while the old plugin is still installed.
 
-1. Update **Infuse Now Playing** to **v0.2.11 or later** and restart Home Assistant. While an old cards resource is present, the integration intentionally does not add a second competing resource.
-2. In HACS/Marketplace, **uninstall the separate Infuse Dashboard Cards plugin**. If you had manually copied the cards, no file deletion is necessary.
-3. Under **Settings → Dashboards → Resources** (menu at the top right), remove any remaining old Infuse card resource URLs, including `/hacsfiles/ha-infuse-cards/`, `/local/community/ha-infuse-cards/`, `/local/infuse-now-playing-card.js` and `/local/infuse-household-card.js`. **Do not remove resources for unrelated cards.**
-4. **Restart Home Assistant** (or reload the Infuse integration) to activate automatic registration from the integration itself, then refresh the browser/app frontend cache. You should see exactly one Infuse cards resource under `/api/infuse/cards/`.
+**Easiest path — uninterrupted card updates:**
 
-Your original custom card **types, entity IDs, configurations and automations stay the same**. The old plugin is not needed for new installations.
+1. Update **Infuse Now Playing** to **v0.2.11 or later** and restart Home Assistant.
+2. Update the **separate Infuse Dashboard Cards plugin** to its final **v0.1.4 (Legacy Bridge)** release through HACS/Marketplace. It is safe to keep that legacy resource installed for the moment; its bridge automatically loads the bundled cards from `/api/infuse/cards/infuse-dashboard-cards.js`.
+3. Refresh the browser/app frontend. Both existing Lovelace card types now run the integrated version, including their visual editors and future card updates from this integration.
 
-For setups with `lovelace: resource_mode: yaml`, automatic editing of `configuration.yaml` is intentionally disabled. Remove the old card resources from `lovelace: resources:` and add exactly one module resource instead:
+**Recommended final cleanup — only one installation:** After the bridge is active, uninstall the separate cards package through HACS/Marketplace and remove any leftover old cards resource entries under **Settings → Dashboards → Resources** (e.g. `/hacsfiles/ha-infuse-cards/`, `/local/community/ha-infuse-cards/`, `/local/infuse-now-playing-card.js`, `/local/infuse-household-card.js`). **Do not remove unrelated resources.** Reload the Infuse integration or restart Home Assistant. It will then register the new bundled `/api/infuse/cards/` resource itself. The integration intentionally does **not** delete or change HACS-managed resources, because HACS/Marketplace owns those entries.
+
+**Important:** If you manually copied the old JavaScript to `/config/www/`, HACS cannot update those files. Remove their manually registered dashboard resource and follow the final cleanup above. Your original custom card **types, entity IDs, YAML configurations and automations stay the same**.
+
+For setups with `lovelace: resource_mode: yaml`, automatic editing of `configuration.yaml` is intentionally disabled. Replace old card resource entries in `lovelace: resources:` with exactly one module resource:
 
 ```yaml
 lovelace:
@@ -58,7 +61,7 @@ lovelace:
       type: module
 ```
 
-Update the `?v=` version after future upgrades to bypass browser caching, then reload dashboard resources. The integration still serves the file automatically in YAML mode.
+Update the `?v=` value after future integration upgrades to bypass browser caching. The integration still serves the file automatically in YAML mode.
 
 ## Requirements
 
@@ -70,7 +73,9 @@ Infuse **8.5.9+** with **Settings → Playback → Now Playing API** enabled, a 
 
 Starting with **Home Assistant 2026.11** (released November 4, 2026), HACS is part of Home Assistant as the built-in **Marketplace**, found under **Settings → Marketplace**. Existing HACS installations and custom repositories migrate automatically on the first start after the Home Assistant update; you **do not need to reinstall Infuse or delete your existing config entry**. Home Assistant preserves your config entry options (including any TMDB token) and entity IDs.
 
-This repository is the **Integration** package and already meets the Marketplace repository layout (`hacs.json` and `custom_components/infuse/`). If you previously added it as a HACS custom repository, it migrates to Marketplace as that same repository. For a fresh install on 2026.11+, open **Settings → Marketplace → ⋮ → Custom repositories**, add `https://github.com/Manantra/ha-infuse` with category **Integration**, and install it. Once it is in the Marketplace catalog, users can install it directly by searching for Infuse. **Catalog submission/approval is separate from repository compatibility.**
+**Recommended installation:** Open **Settings → Marketplace**, search for **Infuse Now Playing**, and install it from the integration catalog. The cards are included. Since the HACS catalog submission has been approved and merged, a custom repository is no longer the default route; catalog indexing may take some time to refresh.
+
+**Alternative:** If it is not yet listed, choose **Marketplace → ⋮ → Custom repositories**, enter `https://github.com/Manantra/ha-infuse` as category **Integration**, and install it that way. This uses the same integration and does not require reinstalling any existing config entries.
 
 [Open Infuse Now Playing in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=Manantra&repository=ha-infuse&category=integration) (Home Assistant 2026.11+).
 
@@ -78,7 +83,7 @@ This repository is the **Integration** package and already meets the Marketplace
 
 ### Home Assistant 2026.10 and older — HACS
 
-Keep using HACS on older Home Assistant versions. In HACS, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration**. Download **Infuse Now Playing**, restart Home Assistant, and use **Settings → Devices & services → Add integration**. Both dashboard cards are already bundled; no separate plugin is required.
+Keep using HACS on older Home Assistant versions. In HACS, **search for Infuse Now Playing** in the integration catalog and install it, then restart Home Assistant and use **Settings → Devices & services → Add integration**. If the catalog result has not appeared yet, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration** instead. Both dashboard cards are included; no separate plugin is required.
 
 ### Manual installation
 
