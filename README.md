@@ -13,7 +13,7 @@
 **Infuse Now Playing** brings Firecore's local, read-only playback information to Home Assistant. Each Infuse endpoint is monitored independently, enabling accurate status and automations in households using multiple Apple TVs, iPads or other supported devices.
 
 > [!IMPORTANT]
-> Independent community project; not affiliated with Firecore, Infuse or the Home Assistant project. Firecore's documented Now Playing API is **read-only** and does not expose remote playback transport controls or the active Apple TV profile.
+> Independent community project; not affiliated with Firecore, Infuse or the Home Assistant project. Firecore's documented Now Playing API is **read-only** and does not expose remote playback transport controls or the active Infuse profile.
 
 ## Highlights
 
@@ -108,21 +108,25 @@ The settings only control the **three bottom tiles**: the large playback status 
 
 **Card updates:** Integration updates automatically update the bundled dashboard resource URL using the integration version. If the card editor appears outdated after upgrading, refresh the Home Assistant frontend cache. YAML resource users should update their `?v=` value manually, as described above.
 
-## Automatic reconnection after Infuse is backgrounded
+## Connection recovery and troubleshooting (Apple TV / Bonjour)
 
-Infuse 8.5.9+ hosts a **read-only** `GET /nowplaying` API on a **temporary TCP port** advertised through Bonjour (`_infuse-np._tcp.local.`). **tvOS can suspend background apps and their HTTP listeners.** Therefore, the Home Assistant media player correctly becomes `unavailable` while no HTTP API is reachable; marking it `idle` would incorrectly imply that Infuse is online. This is not a permanent connection and it cannot keep an Apple TV app running in the background.
+Infuse 8.5.9+ exposes a **read-only** `GET /nowplaying` HTTP endpoint on a **dynamic TCP port** advertised via Bonjour (`_infuse-np._tcp.local.`). On Apple TV, **tvOS may suspend Infuse and its HTTP service while the app is in the background**; a Bonjour announcement can remain cached even when the listener no longer responds. In that situation, Home Assistant correctly reports the media player as `unavailable`, not `idle`. The integration cannot keep Infuse running in the background or start Infuse's private HTTP listener.
 
-Starting with **v0.2.10**, the integration proactively restores its API connection after Infuse returns to the foreground whenever the device advertises or serves a reachable endpoint:
+**How automatic recovery works:**
 
-- Regular HTTP polling continues without restarting Home Assistant, even while offline.
-- A Bonjour listener watches **all Infuse services** on the shared Home Assistant mDNS instance, including devices initially added **manually**. A renamed service is accepted only when it belongs to the original IP and returns a valid Infuse API response. No unrelated devices are automatically adopted.
-- If the old port is unreachable, the integration checks the cached and fresh Bonjour record, then the already-paired device via targeted unicast DNS-SD. As a final fallback it asks that **same device** for currently advertised Infuse service names (PTR), even if the service name changed since initial setup. No subnet scanning or port sweeps are performed.
-- A candidate endpoint is **tested before replacing** the last active endpoint, so stale records cannot overwrite it. Failed discovery is rate-limited to one attempt every 15 seconds per device.
-- Diagnostics under **Settings → Devices & services → Infuse Now Playing → Download diagnostics** include `last_bonjour_resolution`, `recovery_attempts`, `last_connection_error`, `last_successful_contact` and `service_name_changed` (with host and credentials redacted).
+- Regular HTTP polling continues even while a device is unavailable. During initial Bonjour setup, the integration resolves the current advertised endpoint instead of trusting a potentially stale discovery notification; manual host/port setup is supported too.
+- Since **v0.2.5**, the integration has monitored service changes using Home Assistant's shared Bonjour instance and verified new ports before accepting them. It can also set up an offline device as `unavailable` at Home Assistant startup without discarding its config entry.
+- When HTTP polling fails, the integration first checks cached and freshly resolved Bonjour records. Since **v0.2.7**, it can also query the **already paired device** directly for its DNS-SD SRV record over UDP 5353 (useful for HAOS VMs with stale or missing multicast records).
+- Since **v0.2.10**, the integration watches service announcements for manually configured devices too and can ask that **same paired device** for DNS-SD PTR records if the service name changed. It only accepts a new host/port after a successful `/nowplaying` HTTP probe; it does **not** scan subnets, probe arbitrary ports or adopt unrelated devices. Failed recovery discovery is limited to **one attempt every 15 seconds per device**.
 
-**Limit:** If Infuse does not recreate or advertise a working Now Playing HTTP listener after returning to the foreground, no Home Assistant integration can restart that private server. A permanent fix for that specific case requires Firecore to repair its API lifecycle (especially foreground reactivation and re-announcement). The problem should be reported to Firecore separately from requests for additional API response fields, such as an active profile ID.
+**If the player stays unavailable after you reopen Infuse:**
 
-**How to diagnose:** Open Infuse, confirm the Now Playing API setting remains enabled, wait 15–30 seconds, and download the integration diagnostics. If `connected` stays false, `last_bonjour_resolution` reports `no_reachable_new_endpoint`, and Infuse is visible in the foreground, the logs help distinguish unavailable HTTP service from stale SRV records. When feasible, test `http://<apple-tv-ip>:<active_port>/nowplaying` from a device on the same LAN; a refused connection means the listener itself is not reachable on that advertised port. The API has no documented remote command to start its listener.
+1. Open Infuse on Apple TV and check that **Settings → Playback → Now Playing API** is still enabled. Wait at least 15–30 seconds for polling and rediscovery. The selected API port may have changed.
+2. Download diagnostics under **Settings → Devices & services → Infuse Now Playing → Download diagnostics**. Check `connected`, `active_port`, `last_bonjour_resolution`, `recovery_attempts`, `last_connection_error`, `last_successful_contact` and `service_name_changed`; device addresses and TMDB credentials are redacted. `no_reachable_new_endpoint` indicates that no usable HTTP endpoint was found by the available recovery methods.
+3. If possible, test `http://<apple-tv-ip>:<active_port>/nowplaying` from another device on the same local network. A refused connection on the current advertised port points to an unreachable listener, not simply a missing Home Assistant entity. Firewalls, VM network isolation, and blocked direct unicast UDP 5353 can also prevent discovery.
+4. **Known upstream behavior:** In our testing, disabling and re-enabling the Now Playing API in Infuse's settings while Infuse was in the foreground restored the connection **without restarting the app or Home Assistant**. Fully quitting and reopening Infuse is another workaround. The Home Assistant integration cannot remotely toggle or restart Infuse's HTTP service. See the [Firecore API recovery bug report](https://community.firecore.com/t/bug-now-playing-api-does-not-recover-after-returning-infuse-to-foreground-on-apple-tv/61240).
+
+If a newly discovered device's setup dialog still displays an old port, update the integration, restart Home Assistant, and reopen the discovery confirmation so the current Bonjour endpoint is resolved. A temporary `unavailable` state while Infuse is in the background is expected; **remaining unavailable after Infuse returns to the foreground despite a working network** is the separately reported API recovery problem and is not necessarily an integration defect.
 
 ## What is and is not available
 
@@ -134,7 +138,7 @@ Starting with **v0.2.10**, the integration proactively restores its API connecti
 | Optional TMDB posters | Yes |
 | Automation events | Yes |
 | Remote play/pause/seek/volume via Infuse API | No |
-| Active Apple TV profile via Infuse API | No |
+| Active Infuse profile via Now Playing API | No |
 | Full Infuse library access | No |
 
 A shared iCloud or Infuse account does not merge devices or playback sessions. The API does not provide active profile information, so the integration never invents or infers user identities.
@@ -155,37 +159,15 @@ Home Assistant's media-player card displays the **episode title** as its main ti
 
 This is the **API Read Access Token**, not your TMDB password. No token is required to use playback status, series names or progress. Enabling artwork sends the TMDB media ID to TMDB; without a token, playback monitoring stays local. A movie poster or TV-series poster is shown when one is available. A missing TMDB ID, unavailable poster, invalid token or TMDB network error leaves the cover empty rather than breaking local playback.
 
-## Bonjour port changes and Apple TV background behavior
-
-Infuse allocates its local Now Playing API port dynamically. When configuring a Bonjour-discovered device, the integration actively resolves the current service address instead of trusting the original discovery notification. Configured devices attempt re-discovery on connection failures (at most once every 30 seconds) and automatically reconnect when Infuse resumes on a new port.
-
-On Apple TV, the local HTTP endpoint may stop responding when Infuse is moved to the background. In that situation the media player becomes **unavailable** rather than incorrectly reporting **idle**. The Bonjour advertisement can remain visible even while the HTTP server is suspended. Reopening Infuse may not always restore the server; fully closing and reopening the app can bring it back with a different port. These behaviors were observed in a local Apple TV test and may vary by tvOS / Infuse version.
-
-If Home Assistant still shows an old port in an existing setup dialog, update the integration and restart Home Assistant before opening the discovery again. The confirmation screen will then re-resolve the service automatically.
-
 ## Home Assistant branding
 
 The integration includes a custom orange play emblem (not an official Firecore icon) as 256×256 and 512×512 brand assets in `custom_components/infuse/brand/` (`icon.png`, `icon@2x.png`, `logo.png`, `logo@2x.png`). Home Assistant 2026.3+ loads these directly and the built-in Marketplace can fetch branding from the published repository release. Legacy HACS 2.0.5 may still show **“Icon not available”** in its own catalog because its frontend uses the older brands CDN instead of locally packaged icons; this does not affect the integration icon under **Settings → Devices & services**. See [the existing HACS frontend bug](https://github.com/hacs/integration/issues/5402).
-
-## Recovery after Infuse is backgrounded or restarted
-
-On Apple TV, tvOS can suspend the Infuse HTTP service when the app is in the background. The mDNS advertisement may stay visible even if the service no longer answers HTTP requests. When the app is reopened, Infuse often allocates a new port; Home Assistant must follow that change without requiring you to delete the device, reload the integration or restart Home Assistant.
-
-From version **0.2.5**, the integration listens to Infuse service changes through **Home Assistant's shared Bonjour instance**, updates the player endpoint when a new SRV port is advertised and refreshes the entities. When HTTP polling fails, it first tries the shared Bonjour instance and then a fresh resolver if the shared record is stale, limiting repeated lookups while the app is suspended. It also loads an already configured device as **unavailable** at Home Assistant startup if Infuse is still offline; regular polling and Bonjour monitoring continue until the service comes back.
-
-You can inspect **Settings → Devices & services → Infuse Now Playing → Download diagnostics** to see the original setup port, active port, port-switch count, and last resolution path. Addresses and TMDB credentials remain redacted. If the HTTP service remains unreachable even on the most recent Bonjour port, completely quit and reopen Infuse on the Apple TV; Home Assistant cannot restart Infuse's local listener itself.
 
 ## TMDB token persistence and the empty password field
 
 An existing TMDB API Read Access Token is stored in Home Assistant's **config entry options**, not in the integration's Python files. Upgrading this integration must not reset it. For security, the token input in **Configure** is always blank, even when a token has already been saved. Since v0.2.6, the options screen shows **✓ saved** or **✗ not saved** next to the TMDB token status, without exposing the credential. Saving the options with the token field blank or containing only spaces preserves the existing token; the explicit **Remove stored TMDB token** checkbox deletes it.
 
 For additional verification, download the integration diagnostics: `tmdb_configured: true` means a non-empty token is stored. The diagnostic file intentionally never includes the token itself. If `tmdb_configured: false`, you can re-enter your TMDB API Read Access Token via **Configure**; the integration cannot retrieve a token that has actually been deleted from the Home Assistant config entry.
-
-## HAOS virtual machines and stale Bonjour cache (v0.2.7)
-
-In some Home Assistant OS virtual-machine networks, Home Assistant continues reporting an **old Infuse API port** even after the Apple TV has restarted its local HTTP listener. A fresh multicast query may also fail because mDNS delivery through the VM bridge is inconsistent. Version 0.2.7 adds one more targeted fallback: when HTTP polling and the shared/fresh Bonjour resolvers cannot find a reachable updated port, the integration sends a single **unicast DNS-SD SRV query directly to the already configured Apple TV on UDP 5353**. This requests its current `_infuse-np._tcp.local.` port and verifies the returned port by successfully reading the HTTP `/nowplaying` endpoint before accepting it. No subnet scan, arbitrary HTTP port scan or other-device discovery occurs. Queries remain throttled and only run when existing HTTP polling fails.
-
-Bonjour service-change events are also validated with an HTTP read before switching ports, so stale cached events cannot replace a working endpoint. The integration diagnostic `last_bonjour_resolution` value `direct_unicast` indicates the new recovery route was used. If a router, firewall or virtualization layer blocks direct unicast UDP 5353, the integration falls back to its existing discovery behavior and remains unavailable until Infuse can actually be reached.
 
 ## Security and privacy
 
@@ -197,5 +179,14 @@ The independent Python parser/client suite includes multi-device simulation, but
 
 - [Firecore's third-party API documentation](https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services)
 - [Home Assistant integration developer documentation](https://developers.home-assistant.io/)
+
+## Known Infuse API limitations and upstream reports
+
+**A player showing `unavailable` does not automatically mean that this Home Assistant integration is broken.** Playback monitoring depends on a reachable Infuse Now Playing HTTP endpoint. We track the following reports with Firecore:
+
+- **[Now Playing API does not recover after returning Infuse to the foreground on Apple TV — bug report](https://community.firecore.com/t/bug-now-playing-api-does-not-recover-after-returning-infuse-to-foreground-on-apple-tv/61240):** After backgrounding, the HTTP listener may remain unreachable even when Infuse is open again. Our tests found that switching the Now Playing API off and on in Infuse's settings restores access. The integration retries and rediscovers ports, but it cannot restart an HTTP listener that Infuse has not restored. For diagnosis and workarounds, see [Connection recovery and troubleshooting](#connection-recovery-and-troubleshooting-apple-tv--bonjour).
+- **[Expose the active Infuse profile via the Now Playing API — feature request](https://community.firecore.com/t/expose-the-active-infuse-profile-via-the-now-playing-api/61239):** The current API does not expose which **Infuse profile** is selected. This is a missing API capability, **not a second connection bug**. Infuse profiles should not be confused with tvOS users; the Household card only displays profile data when an external Home Assistant sensor provides it.
+
+If the endpoint responds correctly but the integration still fails to update, please [open an integration issue with redacted diagnostics](https://github.com/Manantra/ha-infuse/issues). These upstream reports document limitations of Infuse's current API, not a blanket guarantee that every `unavailable` state has the same cause.
 
 MIT Licensed. Infuse and Firecore are trademarks of their respective owners.
