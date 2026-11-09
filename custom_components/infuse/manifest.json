@@ -5,6 +5,11 @@
     "@Manantra"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "lovelace"
+  ],
   "documentation": "https://github.com/Manantra/ha-infuse",
   "integration_type": "device",
   "iot_class": "local_polling",
@@ -16,10 +21,5 @@
   "version": "0.2.11",
   "zeroconf": [
     "_infuse-np._tcp.local."
-  ],
-  "dependencies": [
-    "frontend",
-    "http",
-    "lovelace"
   ]
 }
