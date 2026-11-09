@@ -10,7 +10,7 @@ def test_marketplace_integration_repository_structure():
     manifest = json.loads((ROOT / 'custom_components/infuse/manifest.json').read_text())
     assert hacs['name'] == 'Infuse Now Playing'
     assert manifest['domain'] == 'infuse'
-    assert manifest['version'] == '0.2.10'
+    assert manifest['version'] == '0.2.11'
     assert (ROOT / 'custom_components/infuse/__init__.py').is_file()
     assert (ROOT / 'custom_components/infuse/brand/icon.png').is_file()
     assert manifest['issue_tracker'].startswith('https://github.com/')
@@ -18,12 +18,23 @@ def test_marketplace_integration_repository_structure():
     assert 'marketplace' not in manifest.get('dependencies', [])
 
 
-def test_different_repository_for_card_plugin():
+def test_bundled_card_repository_and_resource_contract():
     readme = (ROOT / 'README.md').read_text()
-    assert 'Manantra/ha-infuse-cards' in readme
+    manifest = json.loads((ROOT / 'custom_components/infuse/manifest.json').read_text())
+    assert {'http', 'frontend', 'lovelace'} <= set(manifest['dependencies'])
     assert 'marketplace_repository/?owner=Manantra&repository=ha-infuse' in readme
-    assert (ROOT / 'examples/www/infuse-now-playing-card.js').is_file()
-    assert (ROOT / 'examples/www/infuse-household-card.js').is_file()
+    assert '/api/infuse/cards/infuse-dashboard-cards.js' in readme
+    assert 'Migrating from the former separate cards repository' in readme
+    bundled = ROOT / 'custom_components/infuse/www/infuse-dashboard-cards.js'
+    assert bundled.is_file()
+    source = bundled.read_text()
+    assert 'class InfuseNowPlayingCard' in source
+    assert 'class InfuseHouseholdCard' in source
+    assert 'infuse-now-playing-card-editor' in source
+    assert 'infuse-household-card-editor' in source
+    assert 'custom:infuse-now-playing-card' in source
+    assert 'type:"infuse-household-card"' in source
+    assert not list((ROOT / 'examples/www').glob('*.js'))
 
 
 def test_hassfest_friendly_translation_links_use_placeholders():

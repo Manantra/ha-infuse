@@ -50,7 +50,7 @@ globalThis.window={customCards:[]};
 globalThis.document={createElement(name){return new (registry.get(name))();}};
 globalThis.customElements={get(name){return registry.get(name);},define(name,cls){registry.set(name,cls);}};
 globalThis.CustomEvent=class{constructor(type,opts){this.type=type;Object.assign(this,opts);}};
-await import('../examples/www/infuse-household-card.js');
+await import('../custom_components/infuse/www/infuse-dashboard-cards.js');
 const Card=registry.get('infuse-household-card');
 const Editor=registry.get('infuse-household-card-editor');
 const A='media_player.infuse_wohnzimmer';

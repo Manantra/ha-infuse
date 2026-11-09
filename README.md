@@ -25,17 +25,40 @@
 - Optional Infuse-inspired Lovelace cards for single-player and household views.
 - Firecore library and stream URL-generation actions.
 
-## Infuse Dashboard Cards — previews
+## Built-in Dashboard Cards — previews
 
-Want a more visual dashboard? Our optional **[Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards)** package contains both a beautiful single-player view and a household overview for multiple Infuse devices. The cards are installed and updated **separately** through the Home Assistant Marketplace or HACS. They use the media-player entities exposed by this integration and do not affect playback detection or the existing Infuse configuration.
+**Both cards are included in this integration** (since **v0.2.11**). You do **not** need to install a second dashboard/plugin repository or copy JavaScript files to `/config/www`. On setup, Infuse Now Playing serves one versioned JavaScript module at `/api/infuse/cards/infuse-dashboard-cards.js` and automatically registers it as a Lovelace resource in **storage resource mode**.
 
-| [Single-device card](https://github.com/Manantra/ha-infuse-cards#single-device-card) | [Multiple devices card](https://github.com/Manantra/ha-infuse-cards#multiple-devices) |
+| Single-device card | Household card (multiple devices) |
 |:---:|:---:|
-| [![Single Infuse device example: paused episode with cover and three configurable information tiles](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/single-device.png)](https://github.com/Manantra/ha-infuse-cards#single-device-card) | [![Infuse household example: three Apple TVs playing, paused and idle](https://raw.githubusercontent.com/Manantra/ha-infuse-cards/main/assets/previews/multiple-devices.png)](https://github.com/Manantra/ha-infuse-cards#multiple-devices) |
+| ![Single Infuse device example: paused episode with cover and three configurable information tiles](assets/previews/single-device.png) | ![Infuse household example: three Apple TVs playing, paused and idle](assets/previews/multiple-devices.png) |
 
-*Real card renderings with fictional example content.* **Both cards now have visual editors**: the single-player card includes a searchable entity picker and optional status/progress/remaining tiles; the **Household card** lets you add, remove and reorder multiple media players, set a heading and optionally assign an external profile sensor to each device. A **?** help button beside that optional sensor explains the limitation: Infuse does not expose the currently active profile; the sensor must come from another HA source. Its help opens on hover or tap/click. No YAML editing is required.
+*Real card renderings with fictional example content.* The visual editors provide searchable Home Assistant entity pickers. The single-device card can hide/show the Status, Progress and Time remaining tiles; the Household card lets you add, remove and reorder players, choose a title, and optionally assign external HA profile sensors per player. An accessible **?** help bubble explains that Infuse's API cannot directly identify the current profile.
 
-**[View screenshots, configuration examples and installation instructions →](https://github.com/Manantra/ha-infuse-cards)**
+After installing the integration, edit a dashboard and add **Infuse Now Playing** or **Infuse Household** from the card picker. Their types remain `custom:infuse-now-playing-card` and `custom:infuse-household-card`; existing YAML/dashboard configuration needs no changes.
+
+### Migrating from the former separate cards repository
+
+The older [`ha-infuse-cards`](https://github.com/Manantra/ha-infuse-cards) project is superseded by the bundled version, in accordance with HACS's review guidance. The integration **does not delete or modify resources controlled by HACS/Marketplace or manually registered resources**. To avoid two copies of the same cards being loaded in one browser session:
+
+1. Update **Infuse Now Playing** to **v0.2.11 or later** and restart Home Assistant. While an old cards resource is present, the integration intentionally does not add a second competing resource.
+2. In HACS/Marketplace, **uninstall the separate Infuse Dashboard Cards plugin**. If you had manually copied the cards, no file deletion is necessary.
+3. Under **Settings → Dashboards → Resources** (menu at the top right), remove any remaining old Infuse card resource URLs, including `/hacsfiles/ha-infuse-cards/`, `/local/community/ha-infuse-cards/`, `/local/infuse-now-playing-card.js` and `/local/infuse-household-card.js`. **Do not remove resources for unrelated cards.**
+4. **Restart Home Assistant** (or reload the Infuse integration) to activate automatic registration from the integration itself, then refresh the browser/app frontend cache. You should see exactly one Infuse cards resource under `/api/infuse/cards/`.
+
+Your original custom card **types, entity IDs, configurations and automations stay the same**. The old plugin is not needed for new installations.
+
+For setups with `lovelace: resource_mode: yaml`, automatic editing of `configuration.yaml` is intentionally disabled. Remove the old card resources from `lovelace: resources:` and add exactly one module resource instead:
+
+```yaml
+lovelace:
+  resource_mode: yaml
+  resources:
+    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.11
+      type: module
+```
+
+Update the `?v=` version after future upgrades to bypass browser caching, then reload dashboard resources. The integration still serves the file automatically in YAML mode.
 
 ## Requirements
 
@@ -51,19 +74,17 @@ This repository is the **Integration** package and already meets the Marketplace
 
 [Open Infuse Now Playing in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=Manantra&repository=ha-infuse&category=integration) (Home Assistant 2026.11+).
 
-**Custom dashboard cards are a separate Marketplace package.** Install [Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards) as category **Dashboard** to get automatic JavaScript resource registration and card updates, instead of copying `examples/www/*.js` by hand. The cards package contains both `custom:infuse-now-playing-card` and `custom:infuse-household-card` under the same element names, so existing dashboard YAML continues to work. [Open the cards in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=Manantra&repository=ha-infuse-cards&category=plugin).
-
-If you previously copied the cards to `/config/www/` manually, first **remove their old dashboard resource registrations** (`/local/infuse-now-playing-card.js`, `/local/infuse-household-card.js`), then install the Marketplace cards package. The old files can remain as an unused backup but must not be loaded alongside the new package: an old JavaScript module could register the same custom card first and hide new editor features. The Marketplace-managed resource is at `/local/community/ha-infuse-cards/infuse-dashboard-cards.js` and updates automatically. Refresh your browser afterward. If you manage dashboard resources in YAML, follow the Marketplace installer prompt to add the resource manually.
+**Dashboard cards are included.** The single-device and household cards are automatically served and registered by this integration. Do not install the old separate cards plugin; see the migration instructions above if you previously installed it.
 
 ### Home Assistant 2026.10 and older — HACS
 
-Keep using HACS on older Home Assistant versions. In HACS, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration**. Download **Infuse Now Playing**, restart Home Assistant, and use **Settings → Devices & services → Add integration**. To install the managed cards, add `https://github.com/Manantra/ha-infuse-cards` as a separate **Dashboard** custom repository in HACS.
+Keep using HACS on older Home Assistant versions. In HACS, add `https://github.com/Manantra/ha-infuse` as a custom repository of type **Integration**. Download **Infuse Now Playing**, restart Home Assistant, and use **Settings → Devices & services → Add integration**. Both dashboard cards are already bundled; no separate plugin is required.
 
 ### Manual installation
 
 Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart Home Assistant, then add **Infuse Now Playing** under **Settings → Devices & services**.
 
-The custom dashboard cards are optional. **Prefer the separate [Infuse Dashboard Cards](https://github.com/Manantra/ha-infuse-cards) Marketplace/HACS repository** for managed installs and updates. Manual installation remains possible: copy the JavaScript files from `examples/www/` to `<config>/www/` and register the corresponding `/local/*.js` paths as JavaScript-module dashboard resources.
+The dashboard cards ship inside `custom_components/infuse/www/` and are registered on setup in resource storage mode. You no longer need to copy any card files into `<config>/www/` or manage a separate HACS cards package.
 
 ### Optional information tiles in the Infuse Now Playing dashboard card
 
@@ -80,7 +101,7 @@ show_remaining: false
 
 The settings only control the **three bottom tiles**: the large playback status label (for example, *Pausiert*), cover, title, progress bar, and time indicators stay visible. When all three bottom tiles are disabled, their entire row is removed and the card becomes more compact. The options are display-only and do not alter the media-player entity or connection recovery.
 
-**Manual card installation:** The custom card JS is not automatically copied by HACS or Marketplace when updating the **integration**, because it is an optional example outside `custom_components/infuse/`. The recommended solution is the separate [Infuse Dashboard Cards package](https://github.com/Manantra/ha-infuse-cards), which registers and updates the dashboard resource automatically. If you still use a manual card copy, replace `<config>/www/infuse-now-playing-card.js` with the newer `examples/www/infuse-now-playing-card.js` from this repository. Make sure `/local/infuse-now-playing-card.js` is registered as a **JavaScript module** in your dashboard resources; reload the browser/dashboard (or update the resource URL with a version query parameter) if the old card remains cached. You do not need to re-add the Infuse device or change your TMDB token.
+**Card updates:** Integration updates automatically update the bundled dashboard resource URL using the integration version. If the card editor appears outdated after upgrading, refresh the Home Assistant frontend cache. YAML resource users should update their `?v=` value manually, as described above.
 
 ## Automatic reconnection after Infuse is backgrounded
 

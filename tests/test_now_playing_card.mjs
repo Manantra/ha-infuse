@@ -46,7 +46,7 @@ globalThis.document = {createElement(name) {return new (registry.get(name))();}}
 globalThis.CustomEvent = class {
   constructor(type, options) {this.type = type; Object.assign(this, options);}
 };
-await import('../examples/www/infuse-now-playing-card.js');
+await import('../custom_components/infuse/www/infuse-dashboard-cards.js');
 
 const Card = registry.get('infuse-now-playing-card');
 const Editor = registry.get('infuse-now-playing-card-editor');

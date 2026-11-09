@@ -29,6 +29,5 @@ jobs:
           python -c "import json, pathlib; [json.loads(f.read_text()) for f in pathlib.Path('custom_components/infuse').rglob('*.json')]"
       - name: Validate dashboard JavaScript
         run: |
-          node --check examples/www/infuse-now-playing-card.js
-          node --check examples/www/infuse-household-card.js
+          node --check custom_components/infuse/www/infuse-dashboard-cards.js
           node --test tests/test_now_playing_card.mjs tests/test_household_card.mjs

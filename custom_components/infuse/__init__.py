@@ -99,6 +99,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DOMAIN, "create_stream_link", create_stream_link,
         schema=_STREAM_SERVICE_SCHEMA, supports_response=SupportsResponse.ONLY,
     )
+    # The bundled single-device and Household cards share one versioned
+    # dashboard resource, registered only once for all configured devices.
+    from .frontend import async_register_dashboard_cards
+
+    await async_register_dashboard_cards(hass)
     return True
 
 
