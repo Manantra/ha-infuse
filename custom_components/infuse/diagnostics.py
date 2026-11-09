@@ -12,7 +12,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
     coordinator = hass.data[DOMAIN][entry.entry_id]
     snapshot = coordinator.data
     return {
-        "integration_version": "0.2.11",
+        "integration_version": "0.2.12",
         "name": entry.title,
         "host": "[redacted]",
         "port": entry.data.get("port"),

@@ -11,7 +11,7 @@ def test_marketplace_integration_repository_structure():
     assert hacs['name'] == 'Infuse Now Playing'
     assert manifest['domain'] == 'infuse'
     assert list(manifest) == ['domain', 'name', *sorted(k for k in manifest if k not in ('domain', 'name'))]
-    assert manifest['version'] == '0.2.11'
+    assert manifest['version'] == '0.2.12'
     assert (ROOT / 'custom_components/infuse/__init__.py').is_file()
     assert (ROOT / 'custom_components/infuse/brand/icon.png').is_file()
     assert manifest['issue_tracker'].startswith('https://github.com/')

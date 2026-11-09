@@ -35,7 +35,7 @@ async def test_diagnostics_distinguish_missing_api_from_moved_port(monkeypatch):
     )
     hass = SimpleNamespace(data={"infuse":{"test":coordinator}})
     result = await module.async_get_config_entry_diagnostics(hass,entry)
-    assert result["integration_version"]=="0.2.11"
+    assert result["integration_version"]=="0.2.12"
     assert result["connected"] is False
     assert result["recovery_attempts"]==19
     assert result["last_connection_error"]=="ClientConnectorError"

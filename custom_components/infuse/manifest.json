@@ -18,7 +18,7 @@
     "custom_components.infuse"
   ],
   "requirements": [],
-  "version": "0.2.11",
+  "version": "0.2.12",
   "zeroconf": [
     "_infuse-np._tcp.local."
   ]

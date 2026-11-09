@@ -31,7 +31,7 @@
 
 | Single-device card | Household card (multiple devices) |
 |:---:|:---:|
-| ![Single Infuse device example: paused episode with cover and three configurable information tiles](assets/previews/single-device.png) | ![Infuse household example: three Apple TVs playing, paused and idle](assets/previews/multiple-devices.png) |
+| ![Single Infuse device example: paused episode with cover and three configurable information tiles](https://raw.githubusercontent.com/Manantra/ha-infuse/main/assets/previews/single-device.png) | ![Infuse household example: three Apple TVs playing, paused and idle](https://raw.githubusercontent.com/Manantra/ha-infuse/main/assets/previews/multiple-devices.png) |
 
 *Real card renderings with fictional example content.* The visual editors provide searchable Home Assistant entity pickers. The single-device card can hide/show the Status, Progress and Time remaining tiles; the Household card lets you add, remove and reorder players, choose a title, and optionally assign external HA profile sensors per player. An accessible **?** help bubble explains that Infuse's API cannot directly identify the current profile.
 
@@ -57,7 +57,7 @@ For setups with `lovelace: resource_mode: yaml`, automatic editing of `configura
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.11
+    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.12
       type: module
 ```
 
@@ -165,7 +165,7 @@ If Home Assistant still shows an old port in an existing setup dialog, update th
 
 ## Home Assistant branding
 
-The integration includes the original orange play emblem extracted from [`assets/infuse-home-assistant.svg`](assets/infuse-home-assistant.svg) as a 256×256 icon and a 512×512 high-resolution icon in `custom_components/infuse/brand/`. Home Assistant 2026.3 and newer read locally bundled integration brand icons; the design is not a Firecore official icon. Some HACS versions may still show a generic placeholder inside the HACS catalog even when the icon works in **Settings → Devices & services**.
+The integration includes a custom orange play emblem (not an official Firecore icon) as 256×256 and 512×512 brand assets in `custom_components/infuse/brand/` (`icon.png`, `icon@2x.png`, `logo.png`, `logo@2x.png`). Home Assistant 2026.3+ loads these directly and the built-in Marketplace can fetch branding from the published repository release. Legacy HACS 2.0.5 may still show **“Icon not available”** in its own catalog because its frontend uses the older brands CDN instead of locally packaged icons; this does not affect the integration icon under **Settings → Devices & services**. See [the existing HACS frontend bug](https://github.com/hacs/integration/issues/5402).
 
 ## Recovery after Infuse is backgrounded or restarted
 
