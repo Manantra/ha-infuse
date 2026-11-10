@@ -4,7 +4,7 @@
 
 Each Infuse Now Playing mDNS service is represented by one Home Assistant config entry, one asynchronous local HTTP client and one update coordinator. The coordinator retrieves a validated playback snapshot, updates the media-player and sensor entities, and emits transitions only when the snapshot changes.
 
-The optional TMDB enrichment uses a user-provided API read access token to look up poster artwork. It is not required for playback monitoring.
+The optional TMDB enrichment uses a user-provided API read access token to look up poster artwork **asynchronously**, without blocking playback updates or automation events. It is not required for playback monitoring.
 
 ## Device identity and accounts
 
@@ -22,4 +22,4 @@ Firecore serves the local Now Playing API without HTTP authentication or transpo
 
 ## Quality gates
 
-The Python parser and HTTP client are tested using simulated endpoints, including a two-device concurrency scenario. JavaScript dashboard cards receive syntax checks. Live-device and full Home Assistant integration testing are needed to verify end-to-end compatibility.
+The Python parser, HTTP client, Bonjour discovery and coordinator are covered by regression tests, including multi-device scenarios. Dashboard cards have JavaScript tests. A separate smoke-test suite runs against **real Home Assistant Core** with the remote Infuse endpoint mocked; it exercises config-entry setup/unload, offline availability, entity and resource registration, Reconfigure and discovery confirmation. End-to-end testing on actual tvOS devices and home networks is still necessary for reliable foreground/background and multicast behavior. See [Advanced setup](advanced.md) for commands.
