@@ -36,6 +36,9 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._discovered: dict | None = None
+        # Preserve the first advertised endpoint across form rendering and
+        # retry submissions. Only _discovered's preview host/port may change.
+        self._initial_discovered_endpoint: tuple[str, int] | None = None
 
     async def _test_connection(self, host: str, port: int) -> str | None:
         try:
@@ -101,6 +104,7 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_HOST: host, CONF_PORT: port, CONF_NAME: name,
             CONF_DISCOVERY_NAME: discovery_info.name,
         }
+        self._initial_discovered_endpoint = (host, port)
         if any(
             current.data.get(CONF_HOST, "").lower() == host.lower()
             and current.data.get(CONF_PORT) == port
@@ -129,7 +133,11 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # restarts on a new ephemeral port. Ask ONLY the discovered device's
         # original host for its exact DNS-SD SRV record first. On HAOS virtual
         # machines this can be fresher than a multicast/HA cached record.
-        original = info[CONF_HOST], info[CONF_PORT]
+        if self._initial_discovered_endpoint is None:
+            # Also support a confirmation step re-entered directly (e.g. in
+            # tests or after a restored flow) without re-running Zeroconf.
+            self._initial_discovered_endpoint = info[CONF_HOST], info[CONF_PORT]
+        original = self._initial_discovered_endpoint
         direct = await async_resolve_unicast(info[CONF_DISCOVERY_NAME], original[0])
         fresh = None
         if direct is None:

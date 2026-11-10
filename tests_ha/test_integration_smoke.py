@@ -266,3 +266,41 @@ async def test_real_ha_zeroconf_confirmation_replaces_stale_port(hass):
         assert seen_ports == [59096]
         assert direct.await_count == 2
         cached.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_real_ha_confirmation_preserves_initial_port_for_fallback(hass):
+    """Even after preview displays stale DNS, confirm retries original HTTP."""
+    from custom_components.infuse.config_flow import InfuseConfigFlow
+
+    flow = InfuseConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59095,
+        "name": "Infuse Apple TV",
+        "discovery_name": "Infuse Apple TV._infuse-np._tcp.local.",
+    }
+    probed = []
+
+    async def serve_original(client):
+        probed.append(client.endpoint[1])
+        if client.endpoint[1] == 59096:
+            raise aiohttp.ClientConnectionError("new SRV is stale")
+        if client.endpoint[1] == 59095:
+            return Playback("idle", None, None, None)
+        raise AssertionError("Unknown port attempted")
+
+    with (
+        patch("custom_components.infuse.config_flow.async_resolve_unicast",
+              new_callable=AsyncMock, return_value=("192.168.1.50", 59096)),
+        patch("custom_components.infuse.config_flow.async_resolve_endpoint",
+              new_callable=AsyncMock, return_value=None),
+        patch("custom_components.infuse.api.InfuseClient.get_now_playing", serve_original),
+    ):
+        preview = await flow.async_step_confirm()
+        assert preview["description_placeholders"]["port"] == "59096"
+        result = await flow.async_step_confirm({})
+        assert result["type"] == "create_entry"
+        assert result["data"]["port"] == 59095
+        assert probed == [59096, 59095]
