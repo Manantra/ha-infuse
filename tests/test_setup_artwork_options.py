@@ -99,6 +99,12 @@ def flow_module(monkeypatch):
     fullname = f"{PACKAGE_NAME}.config_flow"
     sys.modules.pop(fullname, None)
     module = importlib.import_module(fullname)
+
+    async def no_direct_srv(*_args, **_kwargs):
+        return None
+
+    # Tests must not send real UDP 5353 queries to arbitrary example IPs.
+    monkeypatch.setattr(module, "async_resolve_unicast", no_direct_srv)
     yield module
     sys.modules.pop(fullname, None)
 
@@ -445,3 +451,191 @@ async def test_reconfigure_checks_live_duplicates_after_async_probe(flow_module,
     assert result["type"] == "form"
     assert result["errors"]["base"] == "already_configured"
     assert entry.data == {"host": "192.168.1.4", "port": 59001}
+
+
+@pytest.mark.asyncio
+async def test_discovery_stale_cached_port_is_replaced_with_live_unicast_port(flow_module, monkeypatch):
+    """The actual Apple TV bug: stale 59095 in HA, live 59096 in DNS-SD."""
+    flow = flow_module.InfuseConfigFlow()
+    name = "Infuse (Apple TV)._infuse-np._tcp.local."
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59095,
+        "name": "Infuse (Apple TV)", "discovery_name": name,
+    }
+    direct_queries, fresh_queries, tested = [], [], []
+
+    async def direct(service, host):
+        direct_queries.append((service, host))
+        return host, 59096
+
+    async def stale_fresh(*_args, **_kwargs):
+        fresh_queries.append(True)
+        return "192.168.1.50", 59095
+
+    async def reachable(host, port):
+        tested.append((host, port))
+        return None if port == 59096 else "cannot_connect"
+
+    monkeypatch.setattr(flow_module, "async_resolve_unicast", direct)
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", stale_fresh)
+    monkeypatch.setattr(flow, "_test_connection", reachable)
+    preview = await flow.async_step_confirm()
+    assert preview["type"] == "form"
+    assert preview["description_placeholders"]["port"] == "59096"
+    assert fresh_queries == []  # The live device answer takes precedence over cache.
+
+    confirmed = await flow.async_step_confirm({"tmdb_token": " token "})
+    assert confirmed["type"] == "create_entry"
+    assert confirmed["data"]["port"] == 59096
+    assert confirmed["data"]["host"] == "192.168.1.50"
+    assert confirmed["options"] == {"tmdb_token": "token"}
+    assert tested == [("192.168.1.50", 59096)]
+    assert direct_queries == [(name, "192.168.1.50")] * 2
+
+
+@pytest.mark.asyncio
+async def test_discovery_falls_back_to_verified_fresh_endpoint_if_direct_srv_stale(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59001,
+        "name": "Infuse", "discovery_name": "Infuse._infuse-np._tcp.local.",
+    }
+    tested = []
+
+    async def direct(name, host):
+        return host, 59002  # Direct service DNS-SD returns an unreachable port.
+
+    async def fresh(_hass, _name, host, *, fresh):
+        assert fresh is True
+        return host, 59003
+
+    async def probe(host, port):
+        tested.append((host, port))
+        return None if port == 59003 else "cannot_connect"
+
+    monkeypatch.setattr(flow_module, "async_resolve_unicast", direct)
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", fresh)
+    monkeypatch.setattr(flow, "_test_connection", probe)
+    result = await flow.async_step_confirm({})
+    assert result["type"] == "create_entry"
+    assert result["data"]["port"] == 59003
+    assert tested == [("192.168.1.50", 59002), ("192.168.1.50", 59003)]
+
+
+@pytest.mark.asyncio
+async def test_discovery_does_not_register_unreachable_bonjour_endpoint(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59001,
+        "name": "Infuse", "discovery_name": "Infuse._infuse-np._tcp.local.",
+    }
+
+    async def direct(name, host):
+        return host, 59002
+
+    async def fresh(_hass, _name, host, *, fresh):
+        return host, 59001
+
+    async def unavailable(host, port):
+        return "cannot_connect"
+
+    monkeypatch.setattr(flow_module, "async_resolve_unicast", direct)
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", fresh)
+    monkeypatch.setattr(flow, "_test_connection", unavailable)
+    result = await flow.async_step_confirm({})
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "cannot_connect"
+    assert result["description_placeholders"]["port"] == "59002"
+
+
+@pytest.mark.asyncio
+async def test_discovery_unicast_timeout_uses_fresh_bonjour_endpoint(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59001,
+        "name": "Infuse", "discovery_name": "Infuse._infuse-np._tcp.local.",
+    }
+    called = []
+
+    async def fresh(_hass, _name, host, *, fresh):
+        called.append(fresh)
+        return host, 59003
+
+    async def reachable(host, port):
+        return None
+
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", fresh)
+    monkeypatch.setattr(flow, "_test_connection", reachable)
+    preview = await flow.async_step_confirm()
+    assert preview["description_placeholders"]["port"] == "59003"
+    result = await flow.async_step_confirm({})
+    assert result["data"]["port"] == 59003
+    assert called == [True, True]
+
+
+@pytest.mark.asyncio
+async def test_preview_then_submit_can_fall_back_to_original_working_port(flow_module, monkeypatch):
+    """Copilot review #7: preview must not destroy the initial endpoint."""
+    flow = flow_module.InfuseConfigFlow()
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59095,
+        "name": "Infuse", "discovery_name": "Infuse._infuse-np._tcp.local.",
+    }
+    queried = []
+
+    async def stale_direct(name, host):
+        return host, 59096  # Unreachable port, even though original is alive.
+
+    async def missing_fresh(_hass, _name, _host, *, fresh):
+        assert fresh is True
+        return None
+
+    async def probe(host, port):
+        queried.append((host, port))
+        return None if port == 59095 else "cannot_connect"
+
+    monkeypatch.setattr(flow_module, "async_resolve_unicast", stale_direct)
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", missing_fresh)
+    monkeypatch.setattr(flow, "_test_connection", probe)
+    preview = await flow.async_step_confirm()
+    assert preview["description_placeholders"]["port"] == "59096"
+    assert flow._initial_discovered_endpoint == ("192.168.1.50", 59095)
+    # On submit, directed DNS-SD is still stale and fresh Bonjour is missing.
+    result = await flow.async_step_confirm({})
+    assert result["type"] == "create_entry"
+    assert result["data"]["port"] == 59095  # Real, HTTP-verified original port.
+    assert queried == [("192.168.1.50", 59096), ("192.168.1.50", 59095)]
+
+
+@pytest.mark.asyncio
+async def test_preview_retry_retains_original_endpoint_after_failed_attempt(flow_module, monkeypatch):
+    flow = flow_module.InfuseConfigFlow()
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59095,
+        "name": "Infuse", "discovery_name": "Infuse._infuse-np._tcp.local.",
+    }
+    online = [False]
+
+    async def directed(name, host):
+        return host, 59096
+
+    async def unavailable_fresh(*_args, **_kwargs):
+        return None
+
+    async def probe(host, port):
+        if port == 59095 and online[0]:
+            return None
+        return "cannot_connect"
+
+    monkeypatch.setattr(flow_module, "async_resolve_unicast", directed)
+    monkeypatch.setattr(flow_module, "async_resolve_endpoint", unavailable_fresh)
+    monkeypatch.setattr(flow, "_test_connection", probe)
+    await flow.async_step_confirm()
+    failed = await flow.async_step_confirm({})
+    assert failed["type"] == "form"
+    assert failed["errors"]["base"] == "cannot_connect"
+    online[0] = True
+    successful = await flow.async_step_confirm({})
+    assert successful["type"] == "create_entry"
+    assert successful["data"]["port"] == 59095
+    assert flow._initial_discovered_endpoint == ("192.168.1.50", 59095)

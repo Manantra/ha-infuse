@@ -135,7 +135,7 @@ async def test_real_home_assistant_reconfigure_preserves_device_and_options(hass
         assert entry.data["port"] == 59801
         assert entry.options["tmdb_token"] == "private-token"
         diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-        assert diagnostics["integration_version"] == "0.2.14"
+        assert diagnostics["integration_version"] == "0.2.15"
         assert "private-token" not in str(diagnostics)
         after = {
             entity.entity_id for entity in registry.entities.values()
@@ -226,3 +226,81 @@ async def test_real_home_assistant_immediate_artwork_lookup_does_not_block_futur
             assert coordinator._artwork_tasks == {}
         assert tmdb.call_count == 7  # Six extra media titles all fetched.
         assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_real_ha_zeroconf_confirmation_replaces_stale_port(hass):
+    """A verified direct DNS-SD SRV record beats the stale discovery port."""
+    from custom_components.infuse.config_flow import InfuseConfigFlow
+
+    flow = InfuseConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    flow._discovered = {
+        "host": "192.168.1.50",
+        "port": 59095,
+        "name": "Infuse Apple TV",
+        "discovery_name": "Infuse Apple TV._infuse-np._tcp.local.",
+    }
+    seen_ports = []
+
+    async def simulated_api(client):
+        seen_ports.append(client.endpoint[1])
+        if client.endpoint[1] != 59096:
+            raise aiohttp.ClientConnectionError("cached port is closed")
+        return Playback("idle", None, None, None)
+
+    with (
+        patch("custom_components.infuse.config_flow.async_resolve_unicast",
+              new_callable=AsyncMock, return_value=("192.168.1.50", 59096)) as direct,
+        patch("custom_components.infuse.config_flow.async_resolve_endpoint",
+              new_callable=AsyncMock, return_value=("192.168.1.50", 59095)) as cached,
+        patch("custom_components.infuse.api.InfuseClient.get_now_playing", simulated_api),
+    ):
+        preview = await flow.async_step_confirm()
+        assert preview["description_placeholders"]["port"] == "59096"
+        result = await flow.async_step_confirm({})
+        assert result["type"] == "create_entry"
+        assert result["data"]["port"] == 59096
+        assert result["options"] == {}
+        assert seen_ports == [59096]
+        assert direct.await_count == 2
+        cached.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_real_ha_confirmation_preserves_initial_port_for_fallback(hass):
+    """Even after preview displays stale DNS, confirm retries original HTTP."""
+    from custom_components.infuse.config_flow import InfuseConfigFlow
+
+    flow = InfuseConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    flow._discovered = {
+        "host": "192.168.1.50", "port": 59095,
+        "name": "Infuse Apple TV",
+        "discovery_name": "Infuse Apple TV._infuse-np._tcp.local.",
+    }
+    probed = []
+
+    async def serve_original(client):
+        probed.append(client.endpoint[1])
+        if client.endpoint[1] == 59096:
+            raise aiohttp.ClientConnectionError("new SRV is stale")
+        if client.endpoint[1] == 59095:
+            return Playback("idle", None, None, None)
+        raise AssertionError("Unknown port attempted")
+
+    with (
+        patch("custom_components.infuse.config_flow.async_resolve_unicast",
+              new_callable=AsyncMock, return_value=("192.168.1.50", 59096)),
+        patch("custom_components.infuse.config_flow.async_resolve_endpoint",
+              new_callable=AsyncMock, return_value=None),
+        patch("custom_components.infuse.api.InfuseClient.get_now_playing", serve_original),
+    ):
+        preview = await flow.async_step_confirm()
+        assert preview["description_placeholders"]["port"] == "59096"
+        result = await flow.async_step_confirm({})
+        assert result["type"] == "create_entry"
+        assert result["data"]["port"] == 59095
+        assert probed == [59096, 59095]

@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_LANGUAGE, DEFAULT_POLL_INTERVAL, DOMAIN,
 )
 from .model import InfuseInvalidResponse
+from .unicast_discovery import async_resolve_unicast
 
 
 def _initial_artwork_options(user_input: dict) -> dict[str, str]:
@@ -35,6 +36,9 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._discovered: dict | None = None
+        # Preserve the first advertised endpoint across form rendering and
+        # retry submissions. Only _discovered's preview host/port may change.
+        self._initial_discovered_endpoint: tuple[str, int] | None = None
 
     async def _test_connection(self, host: str, port: int) -> str | None:
         try:
@@ -100,6 +104,7 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_HOST: host, CONF_PORT: port, CONF_NAME: name,
             CONF_DISCOVERY_NAME: discovery_info.name,
         }
+        self._initial_discovered_endpoint = (host, port)
         if any(
             current.data.get(CONF_HOST, "").lower() == host.lower()
             and current.data.get(CONF_PORT) == port
@@ -124,18 +129,48 @@ class InfuseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="not_supported")
         errors: dict[str, str] = {}
         info = self._discovered
-        # A discovery dialog may have been open for hours. Re-resolve the
-        # SRV record, which changes when Infuse restarts its HTTP server.
-        endpoint = await async_resolve_endpoint(
-            self.hass, info[CONF_DISCOVERY_NAME], info[CONF_HOST], fresh=True,
-        )
-        if endpoint is not None:
-            info[CONF_HOST], info[CONF_PORT] = endpoint
+        # Home Assistant can retain a stale Bonjour announcement after Infuse
+        # restarts on a new ephemeral port. Ask ONLY the discovered device's
+        # original host for its exact DNS-SD SRV record first. On HAOS virtual
+        # machines this can be fresher than a multicast/HA cached record.
+        if self._initial_discovered_endpoint is None:
+            # Also support a confirmation step re-entered directly (e.g. in
+            # tests or after a restored flow) without re-running Zeroconf.
+            self._initial_discovered_endpoint = info[CONF_HOST], info[CONF_PORT]
+        original = self._initial_discovered_endpoint
+        direct = await async_resolve_unicast(info[CONF_DISCOVERY_NAME], original[0])
+        fresh = None
+        if direct is None:
+            fresh = await async_resolve_endpoint(
+                self.hass, info[CONF_DISCOVERY_NAME], original[0], fresh=True,
+            )
+        preferred = direct or fresh or original
+        info[CONF_HOST], info[CONF_PORT] = preferred
+
         if user_input is not None:
-            error = await self._test_connection(info[CONF_HOST], info[CONF_PORT])
+            # Confirm using the current endpoint, not just a cached mDNS port.
+            # If the direct record was stale too, try a fresh multicast record
+            # before reporting that the API cannot be reached. Every candidate
+            # must respond to GET /nowplaying before the config is created.
+            error = await self._test_connection(*preferred)
+            if error and direct is not None:
+                fresh = await async_resolve_endpoint(
+                    self.hass, info[CONF_DISCOVERY_NAME], original[0], fresh=True,
+                )
+                if fresh is not None and fresh != preferred:
+                    fresh_error = await self._test_connection(*fresh)
+                    if not fresh_error:
+                        preferred = fresh
+                        error = None
+            if error and original not in {preferred, fresh}:
+                original_error = await self._test_connection(*original)
+                if not original_error:
+                    preferred = original
+                    error = None
             if error:
                 errors["base"] = error
             else:
+                info[CONF_HOST], info[CONF_PORT] = preferred
                 return self.async_create_entry(
                     title=info[CONF_NAME],
                     data=info,
