@@ -61,6 +61,14 @@ def test_troubleshooting_covers_connection_recovery_without_flooding_readme():
     assert "tvOS user profile" in TROUBLESHOOTING
 
 
+def test_old_cards_migration_deep_link_remains_valid():
+    """Keep the published legacy-cards README URL working after the cleanup."""
+    anchor = "migrating-from-the-former-separate-cards-repository"
+    assert f'<a id="{anchor}"></a>' in README
+    assert f"https://github.com/Manantra/ha-infuse#{anchor}" not in README
+    assert "[migration guide](docs/migration.md)" in README
+
+
 def test_migration_details_are_kept_outside_new_user_path():
     assert "https://github.com/Manantra/ha-infuse-cards" in MIGRATION
     assert "v0.1.4 (Legacy Bridge)" in MIGRATION

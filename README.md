@@ -37,6 +37,8 @@
 
 **Can't find the integration?** Add `https://github.com/Manantra/ha-infuse` as a custom **Integration** repository in Marketplace/HACS. For a fully manual installation, copy `custom_components/infuse` into your Home Assistant `custom_components` directory and restart.
 
+<a id="migrating-from-the-former-separate-cards-repository"></a>
+
 **Both cards are included in this integration.** Do not install the old separate cards plugin for a new setup. Already using the former `ha-infuse-cards` repository? See the [migration guide](docs/migration.md).
 
 ## Built-in dashboard cards
