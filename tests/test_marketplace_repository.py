@@ -25,7 +25,8 @@ def test_bundled_card_repository_and_resource_contract():
     assert {'http', 'frontend', 'lovelace'} <= set(manifest['dependencies'])
     assert 'marketplace_repository/?owner=Manantra&repository=ha-infuse' in readme
     assert '/api/infuse/cards/infuse-dashboard-cards.js' in readme
-    assert 'Migrating from the former separate cards repository' in readme
+    assert 'migration guide](docs/migration.md)' in readme
+    assert 'v0.1.4 (Legacy Bridge)' in (ROOT / 'docs/migration.md').read_text()
     bundled = ROOT / 'custom_components/infuse/www/infuse-dashboard-cards.js'
     assert bundled.is_file()
     source = bundled.read_text()
