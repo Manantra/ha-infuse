@@ -57,7 +57,7 @@ For setups with `lovelace: resource_mode: yaml`, automatic editing of `configura
 lovelace:
   resource_mode: yaml
   resources:
-    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.14
+    - url: /api/infuse/cards/infuse-dashboard-cards.js?v=0.2.15
       type: module
 ```
 
@@ -90,6 +90,14 @@ Keep using HACS on older Home Assistant versions. In HACS, **search for Infuse N
 Copy `custom_components/infuse` to `<config>/custom_components/infuse`, restart Home Assistant, then add **Infuse Now Playing** under **Settings → Devices & services**.
 
 The dashboard cards ship inside `custom_components/infuse/www/` and are registered on setup in resource storage mode. You no longer need to copy any card files into `<config>/www/` or manage a separate HACS cards package.
+
+### Stale Bonjour discovery port fix (v0.2.15+)
+
+Home Assistant can display an existing Infuse discovery prompt even if the Apple TV is asleep or Infuse has been suspended. A cached Bonjour advertisement may still point to the **previous HTTP API port** (for example, `59095` after Infuse has resumed on `59096`). An outdated port can make the discovered-device confirmation say “Unable to contact Infuse” even while the API works on the new port.
+
+During discovery **confirmation**, the integration now asks the **already discovered Apple TV's host** for its exact DNS-SD SRV record over targeted unicast UDP 5353, rather than trusting a cached multicast record. When unicast is unavailable, it falls back to a fresh Bonjour resolution; if the directly reported port is unreachable, it also tries independently resolved candidates. A config entry is created **only after a successful HTTP `/nowplaying` response**. The integration does not scan subnets or try arbitrary ports.
+
+If the API is switched off or Infuse is not running, the original discovery prompt may remain visible until Home Assistant clears its cached announcement. That is **not proof that the API is reachable**. Start Infuse, enable **Settings → Playback → Now Playing API**, and reopen the discovery confirmation. If your network blocks direct DNS-SD queries and Bonjour remains stale, manually add the device using its currently advertised host and port. Routine port changes of an already configured device are still handled by the existing automatic recovery logic.
 
 ### Safety fixes in v0.2.14
 
