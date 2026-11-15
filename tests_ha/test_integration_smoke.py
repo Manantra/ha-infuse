@@ -304,3 +304,44 @@ async def test_real_ha_confirmation_preserves_initial_port_for_fallback(hass):
         assert result["type"] == "create_entry"
         assert result["data"]["port"] == 59095
         assert probed == [59096, 59095]
+
+
+@pytest.mark.asyncio
+async def test_real_ha_fresh_bonjour_lookup_keeps_shared_zeroconf_running(
+    hass, socket_enabled, monkeypatch,
+):
+    """A fresh lookup must not shut down Home Assistant's shared Zeroconf.
+
+    Inside HA, AsyncZeroconf() is handed the shared instance by HA's
+    multiple-instance catcher. Closing that wrapper stops the shared instance
+    for every integration (Cast, HomeKit, ...), which then fail with
+    NotRunningException until HA restarts.
+    """
+    import zeroconf
+    from zeroconf.asyncio import AsyncZeroconf
+    from homeassistant.components.zeroconf.models import HaAsyncZeroconf, HaZeroconf
+    from homeassistant.components.zeroconf.usage import install_multiple_zeroconf_catcher
+
+    from custom_components.infuse.discovery import async_resolve_endpoint
+
+    hass_zc = HaZeroconf()
+    shared = HaAsyncZeroconf(zc=hass_zc)
+    # Let monkeypatch undo the catcher's class-level patches after the test.
+    for name in ("__new__", "__init__"):
+        monkeypatch.setattr(zeroconf.Zeroconf, name, getattr(zeroconf.Zeroconf, name))
+    install_multiple_zeroconf_catcher(hass_zc)
+    try:
+        with (
+            patch("homeassistant.components.zeroconf.async_get_async_instance",
+                  new_callable=AsyncMock, return_value=shared),
+            # Skip the 3 s network wait; the shutdown happens on close, not lookup.
+            # HaAsyncZeroconf inherits this, so old and fixed paths are both covered.
+            patch.object(AsyncZeroconf, "async_get_service_info",
+                         new_callable=AsyncMock, return_value=None),
+        ):
+            assert await async_resolve_endpoint(
+                hass, "Infuse Apple TV._infuse-np._tcp.local.", fresh=True,
+            ) is None
+        assert not hass_zc.done
+    finally:
+        await shared.ha_async_close()
